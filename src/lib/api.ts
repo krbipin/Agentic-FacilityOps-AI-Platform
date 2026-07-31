@@ -275,6 +275,52 @@ export interface AssetItem {
   next_due: string | null;
 }
 
+export interface AssetMaintenance {
+  issue_type: string;
+  maintenance_date: string;
+  cost: number;
+  technician: string;
+  status: string;
+}
+
+export interface AssetDetail extends AssetItem {
+  maintenance_history: AssetMaintenance[];
+}
+
+export interface AssetStatusPayload {
+  facility: FacilityInfo;
+  total: number;
+  statuses: Record<"Excellent" | "Good" | "Warning" | "Critical", number>;
+  distribution_pct: Record<"Excellent" | "Good" | "Warning" | "Critical", number>;
+}
+
+export interface AgentStatus {
+  id: string;
+  name: string;
+  module: string;
+  status: string;
+  last_run: string;
+  health: number;
+}
+
+export interface IntegrationItem {
+  id: string;
+  name: string;
+  kind: string;
+  status: string;
+  detail: string;
+}
+
+export interface SettingsIntegrationsPayload {
+  items: IntegrationItem[];
+}
+
+export interface CopilotAgentsPayload {
+  agents: { name: string; status: string; insight: string }[];
+  facility_health: number;
+  correlations: { pair: string; r: number; computed_r: number }[];
+}
+
 export function useApiData<T>(path: string | null, fallback: T) {
   const [data, setData] = useState<T>(fallback);
   const [loading, setLoading] = useState<boolean>(!!path);

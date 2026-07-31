@@ -1,0 +1,285 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { Gauge } from "@/components/charts/Gauge";
+import { PageIntro } from "@/components/PageIntro";
+import { Button } from "@/components/ui/Button";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Chip, type Tone } from "@/components/ui/Chip";
+import { Drawer } from "@/components/ui/Drawer";
+import { Icon } from "@/components/ui/icons";
+import { TextField, SelectField } from "@/components/ui/Input";
+import { Modal } from "@/components/ui/Modal";
+import { Skeleton } from "@/components/ui/misc";
+import { useToast } from "@/components/ui/Toast";
+import { fetcher, useApiData, type AssetItem, type AssetDetail, type AssetStatusPayload } from "@/lib/api";
+
+const EMPTY_STATUS: AssetStatusPayload = {
+  facility: { name: "", facility_type: "", location: "" },
+  total: 0, statuses: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 },
+  distribution_pct: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 },
+};
+
+const statusTone: Record<string, Tone> = { Excellent: "green", Good: "blue", Warning: "amber", Critical: "red" };
+const TYPE_FILTERS = ["All", "HVAC", "Lighting", "Generators", "Elevators", "Access", "Pumps"];
+const PER_PAGE = 25;
+
+export function Assets() {
+  const status = useApiData<AssetStatusPayload>("/api/dashboards/assets", EMPTY_STATUS);
+  const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [type, setType] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [page, setPage] = useState(0);
+  const [items, setItems] = useState<AssetItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [itemsLoading, setItemsLoading] = useState(true);
+  const [detail, setDetail] = useState<AssetDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
+    if (search.trim()) params.set("search", search.trim());
+    if (type !== "All") params.set("asset_type", type);
+    if (statusFilter !== "All") params.set("status", statusFilter);
+    fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
+      .then((d) => {
+        if (!cancelled) {
+          setItems(d.items);
+          setTotal(d.total);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setItemsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [search, type, statusFilter, page]);
+
+  const refreshItems = useCallback(() => {
+    setItemsLoading(true);
+    const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
+    if (search.trim()) params.set("search", search.trim());
+    if (type !== "All") params.set("asset_type", type);
+    if (statusFilter !== "All") params.set("status", statusFilter);
+    fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
+      .then((d) => {
+        setItems(d.items);
+        setTotal(d.total);
+      })
+      .finally(() => setItemsLoading(false));
+  }, [search, type, statusFilter, page]);
+
+  const openDetail = useCallback((id: string) => {
+    setDetailLoading(true);
+    setDetail(null);
+    fetcher<AssetDetail>(`/api/assets/${id}`)
+      .then(setDetail)
+      .finally(() => setDetailLoading(false));
+  }, []);
+
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+
+  const distribution = [
+    { label: "Excellent", value: status.data.statuses.Excellent, color: "var(--color-signal-green)" },
+    { label: "Good", value: status.data.statuses.Good, color: "var(--color-primary)" },
+    { label: "Warning", value: status.data.statuses.Warning, color: "var(--color-alert-amber)" },
+    { label: "Critical", value: status.data.statuses.Critical, color: "var(--color-alert-red)" },
+  ];
+
+  return (
+    <div>
+      <PageIntro
+        title="Assets"
+        subtitle={`${status.data.total.toLocaleString()} assets monitored by the Maintenance Agent`}
+        agent="Maintenance Agent"
+        actions={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => toast("CSV import not configured in demo", "error")}>
+              <Icon name="download" size={14} /> Import CSV
+            </Button>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Icon name="plus" size={14} /> Add asset
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="rounded-card bg-panel-slate glow-border panel-glow p-card-padding">
+          <div className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Total Assets</div>
+          <div className="mt-1 font-kpi-value text-kpi-value text-ice-white">{status.data.total.toLocaleString()}</div>
+        </div>
+        {distribution.map((d) => (
+          <div key={d.label} className="rounded-card bg-panel-slate glow-border panel-glow p-card-padding">
+            <div className="flex items-center justify-between">
+              <span className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">{d.label}</span>
+              <span className="size-2.5 rounded-full" style={{ background: d.color }} aria-hidden="true" />
+            </div>
+            <div className="mt-1 font-kpi-value text-kpi-value text-ice-white">{status.data.statuses[d.label as keyof typeof status.data.statuses].toLocaleString()}</div>
+            <div className="mt-1 text-caption text-steel-slate">{status.data.distribution_pct[d.label as keyof typeof status.data.distribution_pct]}% of fleet</div>
+          </div>
+        ))}
+      </div>
+
+      <Card className="mt-6">
+        <CardHeader title="Asset Register" subtitle={`Showing ${items.length} of ${total.toLocaleString()} assets`} />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_180px]">
+          <TextField label="Search" placeholder="Name or ID…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+          <SelectField label="Type" value={type} onChange={(e) => { setType(e.target.value); setPage(0); }}>
+            {TYPE_FILTERS.map((t) => <option key={t}>{t}</option>)}
+          </SelectField>
+          <SelectField label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+            <option value="All">All</option>
+            <option>Excellent</option>
+            <option>Good</option>
+            <option>Warning</option>
+            <option>Critical</option>
+          </SelectField>
+        </div>
+
+        <div className="mt-5">
+          {itemsLoading ? (
+            <div className="space-y-2" aria-busy="true" aria-label="Loading assets">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11" />)}
+            </div>
+          ) : (
+            <div className="-mx-4 overflow-x-auto px-4">
+              <table className="w-full min-w-[860px] text-left text-body-sm">
+                <thead>
+                  <tr className="text-caption uppercase tracking-wide text-steel-slate">
+                    <th className="py-2 pr-4 font-medium">ID</th>
+                    <th className="py-2 pr-4 font-medium">Name</th>
+                    <th className="py-2 pr-4 font-medium">Type</th>
+                    <th className="py-2 pr-4 font-medium">Location</th>
+                    <th className="py-2 pr-4 font-medium">Status</th>
+                    <th className="py-2 pr-4 font-medium">Health</th>
+                    <th className="py-2 pr-4 font-medium">Last maint.</th>
+                    <th className="py-2 pr-4 font-medium">Next due</th>
+                    <th className="py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-hairline-slate">
+                  {items.length === 0 && (
+                    <tr><td colSpan={9} className="py-10 text-center text-steel-slate">No assets match filters</td></tr>
+                  )}
+                  {items.map((a) => (
+                    <tr key={a.id} className={`text-steel-slate ${a.status === "Critical" ? "border-l-2 border-alert-red" : a.status === "Warning" ? "border-l-2 border-alert-amber" : ""}`}>
+                      <td className="py-3 pr-4 font-mono text-caption">{a.id}</td>
+                      <td className="py-3 pr-4 font-medium text-ice-white">{a.name}</td>
+                      <td className="py-3 pr-4">{a.asset_type}</td>
+                      <td className="py-3 pr-4">{a.location}</td>
+                      <td className="py-3 pr-4"><Chip tone={statusTone[a.status] ?? "steel"}>{a.status}</Chip></td>
+                      <td className="py-3 pr-4 font-mono text-caption">{a.health_score}/100</td>
+                      <td className="py-3 pr-4 font-mono text-caption">{a.last_maintenance}</td>
+                      <td className="py-3 pr-4 font-mono text-caption">{a.next_due ?? "—"}</td>
+                      <td className="py-3">
+                        <Button size="sm" variant="ghost" onClick={() => openDetail(a.id)}>View</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-caption text-steel-slate">Page {page + 1} of {pages}</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              <Icon name="chevronLeft" size={14} /> Prev
+            </Button>
+            <Button size="sm" variant="secondary" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>
+              Next <Icon name="chevronRight" size={14} />
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Drawer open={!!detail || detailLoading} onClose={() => setDetail(null)} title={detail ? `${detail.name} · ${detail.id}` : "Loading asset…"}>
+        {detailLoading && <Skeleton className="h-40" />}
+        {detail && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-4">
+              <Gauge value={detail.health_score} label="Health" size={110} />
+              <div className="space-y-1">
+                <Chip tone={statusTone[detail.status] ?? "steel"}>{detail.status}</Chip>
+                <p className="text-caption text-steel-slate">{detail.asset_type} · {detail.location}</p>
+                <p className="font-mono text-caption text-steel-slate">Useful life {detail.useful_life_pct}%</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-body-sm">
+              {[
+                ["Manufacturer", detail.manufacturer],
+                ["Installed", detail.install_date],
+                ["Last maintenance", detail.last_maintenance],
+                ["Next due", detail.next_due ?? "—"],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-control border border-hairline-slate bg-elevated-slate p-3">
+                  <p className="text-caption text-steel-slate">{k}</p>
+                  <p className="mt-0.5 font-mono text-ice-white">{v}</p>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <h3 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Maintenance history</h3>
+              <ul role="list" className="mt-2 divide-y divide-hairline-slate">
+                {detail.maintenance_history.slice(0, 5).map((m, i) => (
+                  <li key={i} className="py-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-body-sm text-ice-white">{m.issue_type}</p>
+                      <span className="shrink-0 font-mono text-caption text-steel-slate">${m.cost.toLocaleString()}</span>
+                    </div>
+                    <p className="text-caption text-steel-slate">{m.maintenance_date} · {m.technician} · {m.status}</p>
+                  </li>
+                ))}
+                {detail.maintenance_history.length === 0 && <li className="py-4 text-caption text-steel-slate">No maintenance records</li>}
+              </ul>
+            </div>
+
+            <div className="rounded-control border border-alert-amber/30 bg-alert-amber/5 p-4">
+              <p className="flex items-center gap-2 text-body-sm font-medium text-alert-amber">
+                <Icon name="alert" size={14} /> Predicted failure {detail.status === "Critical" ? "in ~2 days" : "in ~6 days"}
+              </p>
+              <p className="mt-1 font-mono text-caption text-steel-slate">confidence 92% · Maintenance Agent</p>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" onClick={() => toast(`Work order drafted for ${detail.id}`, "success")}>
+                  <Icon name="clipboard" size={13} /> Schedule work order
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => toast("Prediction dismissed", "success")}>Dismiss</Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Drawer>
+
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add Asset"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={() => { setAddOpen(false); toast("Asset added (demo)", "success"); refreshItems(); }}>Add asset</Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 gap-4">
+          <TextField label="Asset name" placeholder="AHU-9" />
+          <SelectField label="Type" defaultValue="HVAC">
+            {TYPE_FILTERS.filter((t) => t !== "All").map((t) => <option key={t}>{t}</option>)}
+          </SelectField>
+          <TextField label="Location" placeholder="Floor 3 Plant" />
+          <TextField label="Install date" defaultValue="2026-07-31" />
+          <TextField label="Manufacturer" placeholder="Carrier" />
+        </div>
+      </Modal>
+    </div>
+  );
+}

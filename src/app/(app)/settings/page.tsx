@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Settings } from "@/components/pages/Settings";
 
-export const metadata: Metadata = { title: "Settings" };
+export const metadata: Metadata = { title: "Settings & Integrations" };
 
 export default function SettingsPage() {
-  return (
-    <PagePlaceholder
-      title="Settings & Integrations"
-      subtitle="Notifications, agents, facilities, integrations, and team access"
-      phase="Phase 5"
-      icon="settings"
-    />
-  );
+  return <Settings />;
 }
