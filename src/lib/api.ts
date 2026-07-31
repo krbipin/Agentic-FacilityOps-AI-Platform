@@ -151,13 +151,48 @@ export interface RecommendationItem {
   status: string;
 }
 
+export interface IntelligenceCorrelation {
+  pair: string;
+  r?: number;
+  computed_r?: number;
+  confidence?: string;
+  insight?: string;
+  action?: string;
+}
+
+export interface IntelligenceAnomaly {
+  severity: string;
+  domain: string;
+  detail: string;
+  timestamp: string;
+  status: string;
+}
+
+export interface IntelligenceCollaboration {
+  source: string;
+  target: string;
+  insight: string;
+}
+
+export interface ForecastCard {
+  domain: string;
+  horizon: string;
+  headline: string;
+  confidence: string;
+  series: { label: string; value: number }[];
+}
+
 export interface IntelligencePayload {
   facility: FacilityInfo;
   engine: string;
   facility_health: number;
   agent_health: Record<string, number>;
-  correlations: { pair: string; r: number; computed_r: number }[];
+  kpis: { cost_reduction_pct: number; roi_generated: number; facility_health: number; optimizations: number };
+  correlations: IntelligenceCorrelation[];
   anomaly_sources: { source: string; detail: string }[];
+  anomaly_feed: IntelligenceAnomaly[];
+  collaboration: IntelligenceCollaboration[];
+  forecasts: ForecastCard[];
   recommendations: RecommendationItem[];
   optimizations: number;
 }
@@ -192,6 +227,23 @@ export interface AlertsPayload {
     channels: string[];
     created_at: string;
   }[];
+}
+
+export interface ReportsPayload {
+  facility: FacilityInfo;
+  narrative: string;
+  kpis: { cost_reduction_pct: number; roi_generated: number; facility_health: number; optimizations: number };
+  spend_trend: { this_quarter: number; budget: number; prior_year: number };
+  scorecards: { domain: string; score: number; note: string }[];
+  sustainability: { carbon_reduction_pct: number; renewables_pct: number; co2_trend: { date: string; co2_kg: number }[] };
+  insights: string[];
+  agent_performance: { agent: string; health: number; cost_reduction: string; roi: string; downtime: string }[];
+  energy: EnergyPayload;
+  maintenance: MaintenancePayload;
+  occupancy: OccupancyPayload;
+  security: SecurityPayload;
+  cost: CostPayload;
+  intelligence: IntelligencePayload;
 }
 
 export interface WorkOrderItem {

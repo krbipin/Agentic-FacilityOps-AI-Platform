@@ -54,12 +54,51 @@ def run(session: Session, facility_id: int) -> dict:
         {"source": "Security Agent", "detail": "4 unauthorized access attempts"},
     ]
 
+    anomaly_feed = [
+        {"severity": "Amber", "domain": "Energy", "detail": "AHU-4 draw 18% above baseline", "timestamp": "14:32", "status": "Open"},
+        {"severity": "Red", "domain": "Maintenance", "detail": "AHU-4 predicted failure (92%)", "timestamp": "12:47", "status": "Open"},
+        {"severity": "Red", "domain": "Security", "detail": "4 unauthorized access attempts", "timestamp": "11:05", "status": "Open"},
+    ]
+
+    correlations = [
+        {
+            "pair": "Energy × Occupancy",
+            "r": CORR_ENERGY_OCCUPANCY,
+            "computed_r": corr,
+            "confidence": "High",
+            "insight": "Equipment running for empty floors — HVAC/lighting aligned to stale occupancy.",
+            "action": "Align HVAC schedules to live occupancy zones.",
+        },
+        {
+            "pair": "After-hours access × Server-room temp",
+            "confidence": "Medium",
+            "insight": "Server-room temperature spikes follow late badge access.",
+            "action": "Add thermal-recovery policy after badge events.",
+        },
+        {
+            "pair": "Meeting booking × Floor space",
+            "confidence": "Medium",
+            "insight": "Booking drop signals a floor-consolidation opportunity.",
+            "action": "Run floor-consolidation scenario in Cost agent.",
+        },
+    ]
+
+    collaboration = [
+        {"source": "Energy", "target": "Maintenance", "insight": "flagged AHU wear"},
+        {"source": "Energy", "target": "Cost", "insight": "off-peak shift"},
+        {"source": "Occupancy", "target": "Cost", "insight": "space saving"},
+        {"source": "Security", "target": "Intelligence", "insight": "access pattern feed"},
+        {"source": "Maintenance", "target": "Intelligence", "insight": "failure forecast"},
+    ]
+
     return {
         "engine": "Facility Intelligence Engine",
         "facility_health": FACILITY_HEALTH,
         "agent_health": health_scores(),
-        "correlations": [{"pair": "Energy × Occupancy", "r": CORR_ENERGY_OCCUPANCY, "computed_r": corr}],
+        "correlations": correlations,
         "anomaly_sources": anomaly_sources,
+        "anomaly_feed": anomaly_feed,
+        "collaboration": collaboration,
         "recommendations": recommendations,
         "optimizations": 18,
     }

@@ -39,7 +39,9 @@ const EMPTY: OverviewPayload = {
   },
   intelligence: {
     facility: { name: "", facility_type: "", location: "" }, engine: "", facility_health: 0,
-    agent_health: {}, correlations: [], anomaly_sources: [], recommendations: [], optimizations: 0,
+    agent_health: {}, kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 },
+    correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [],
+    recommendations: [], optimizations: 0,
   },
   alerts: [],
 };
