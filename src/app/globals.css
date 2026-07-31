@@ -121,6 +121,33 @@
   }
 }
 
+/* ── Light theme ──────────────────────────────────────────────── */
+@layer base {
+  .light {
+    color-scheme: light;
+    --color-abyss-navy: #f1f5f9;
+    --color-panel-slate: #ffffff;
+    --color-elevated-slate: #e2e8f0;
+    --color-hairline-slate: #cbd5e1;
+    --color-ice-white: #0f172a;
+    --color-steel-slate: #475569;
+    --color-primary: #0284c7;
+    --color-primary-container: #bae6fd;
+    --color-signal-green: #059669;
+    --color-alert-amber: #d97706;
+    --color-alert-red: #dc2626;
+    --color-violet: #7c3aed;
+  }
+
+  .light .bg-primary {
+    --color-abyss-navy: #0b1120;
+  }
+
+  .light .bg-ice-white {
+    --color-ice-white: #ffffff;
+  }
+}
+
 /* ── Component utilities (from mockup styles) ────────────────── */
 @utility glow-border {
   border: 1px solid var(--color-hairline-slate);
