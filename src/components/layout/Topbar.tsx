@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useClerk, useUser } from "@clerk/nextjs";
 import { Icon } from "@/components/ui/icons";
 import { cn } from "@/components/ui/cn";
 
 const FACILITY = "Corporate HQ & IT Park";
-const USER = { name: "Alex Morgan", role: "Facility Manager", initials: "AM" };
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -124,17 +124,48 @@ export function Topbar({
   onToggleCollapse: () => void;
   collapsed: boolean;
 }) {
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  const displayName = user
+    ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
+    : "Facility Manager";
+  const initials = user
+    ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
+    : "FM";
+
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("theme");
+    } catch {
+      /* private mode */
+    }
+    const param = new URLSearchParams(window.location.search).get("__theme");
+    if (param === "light" || param === "dark") saved = param;
+    const id = window.setTimeout(() => {
+      if (saved === "light") {
+        setTheme("light");
+        document.documentElement.classList.add("light");
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.classList.toggle("light", next === "light");
     try {
       localStorage.setItem("theme", next);
     } catch {
       /* private mode */
     }
+  };
+
+  const handleSignOut = () => {
+    void signOut({ redirectUrl: "/" });
   };
 
   return (
@@ -217,14 +248,14 @@ export function Topbar({
           trigger={(open) => (
             <>
               <span className="flex size-8 items-center justify-center rounded-full bg-primary/15 font-data-table text-xs font-semibold text-primary ring-1 ring-primary/30">
-                {USER.initials}
+                {initials}
               </span>
               <span className="hidden text-left sm:block">
                 <span className="block max-w-32 truncate font-body-sm text-body-sm font-medium leading-tight text-ice-white">
-                  {USER.name}
+                  {isLoaded ? displayName : "…"}
                 </span>
                 <span className="block font-caption text-caption leading-tight text-steel-slate">
-                  {USER.role}
+                  Facility Manager
                 </span>
               </span>
               <Icon name="chevronDown" size={14} className={cn("transition-transform", open && "rotate-180")} />
@@ -234,12 +265,12 @@ export function Topbar({
           {(close) => (
             <>
               <p className="px-4 pb-1.5 pt-1 font-label-caps text-label-caps text-steel-slate/60 uppercase">
-                {USER.name}
+                {isLoaded ? displayName : "Account"}
               </p>
               <MenuItem icon="settings" label="Settings" onSelect={close} />
               <MenuItem icon="fileText" label="My reports" onSelect={close} />
               <div className="my-1.5 h-px bg-hairline-slate" aria-hidden="true" />
-              <MenuItem icon="logout" label="Sign out" onSelect={close} />
+              <MenuItem icon="logout" label="Sign out" onSelect={handleSignOut} />
             </>
           )}
         </Menu>
