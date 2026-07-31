@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Maintenance } from "@/components/pages/Maintenance";
 
-export const metadata: Metadata = { title: "Maintenance" };
+export const metadata: Metadata = { title: "Predictive Maintenance" };
 
 export default function MaintenancePage() {
-  return (
-    <PagePlaceholder
-      title="Maintenance Dashboard"
-      subtitle="Monitored by the Maintenance Agent"
-      phase="Phase 3"
-      icon="wrench"
-    />
-  );
+  return <Maintenance />;
 }

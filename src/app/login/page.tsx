@@ -1,9 +1,23 @@
-import type { Metadata } from "next";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icons";
 
-export const metadata: Metadata = { title: "Sign in" };
-
 export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("alex.morgan@facilityops.ai");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function signIn() {
+    setBusy(true);
+    window.setTimeout(() => {
+      localStorage.setItem("facilityops_session", JSON.stringify({ email, name: "Alex Morgan", role: "Facility Manager" }));
+      router.push("/");
+    }, 400);
+  }
+
   return (
     <div className="flex min-h-dvh">
       <aside className="hidden w-[45%] flex-col justify-between border-r border-hairline-slate bg-abyss-navy p-10 lg:flex">
@@ -92,7 +106,7 @@ export default function LoginPage() {
             </h2>
             <p className="mt-1 font-body-sm text-body-sm text-steel-slate">Operator access only</p>
 
-            <form className="mt-6 flex flex-col gap-4">
+            <form className="mt-6 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); signIn(); }}>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="email" className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">
                   Email
@@ -100,6 +114,8 @@ export default function LoginPage() {
                 <input
                   id="email"
                   type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
                   autoComplete="email"
                   className="h-10 rounded-control border border-hairline-slate bg-abyss-navy px-3 font-body-md text-body-md text-ice-white placeholder:text-steel-slate/50 focus:outline focus:outline-2 focus:outline-primary"
@@ -117,6 +133,8 @@ export default function LoginPage() {
                 <input
                   id="password"
                   type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                   className="h-10 rounded-control border border-hairline-slate bg-abyss-navy px-3 font-data-table text-data-table text-ice-white placeholder:text-steel-slate/50 focus:outline focus:outline-2 focus:outline-primary"
                   placeholder="••••••••"
@@ -125,9 +143,10 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                className="mt-1 h-10 w-full rounded-control bg-primary font-body-md text-body-md font-semibold text-abyss-navy transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                disabled={busy}
+                className="mt-1 h-10 w-full rounded-control bg-primary font-body-md text-body-md font-semibold text-abyss-navy transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 disabled:opacity-60"
               >
-                Sign in
+                {busy ? "Signing in…" : "Sign in"}
               </button>
 
               <div className="flex items-center gap-3 py-1">
@@ -139,12 +158,14 @@ export default function LoginPage() {
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
+                  onClick={signIn}
                   className="h-10 flex-1 rounded-control border border-hairline-slate bg-panel-slate font-body-sm text-body-sm text-ice-white transition-colors hover:bg-elevated-slate"
                 >
                   Continue with Microsoft
                 </button>
                 <button
                   type="button"
+                  onClick={signIn}
                   className="h-10 flex-1 rounded-control border border-hairline-slate bg-panel-slate font-body-sm text-body-sm text-ice-white transition-colors hover:bg-elevated-slate"
                 >
                   Continue with Google

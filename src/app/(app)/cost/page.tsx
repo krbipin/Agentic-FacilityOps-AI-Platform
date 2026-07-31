@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Cost } from "@/components/pages/Cost";
 
 export const metadata: Metadata = { title: "Cost Optimization" };
 
 export default function CostPage() {
-  return (
-    <PagePlaceholder
-      title="Cost Optimization"
-      subtitle="Monitored by the Cost Optimization Agent"
-      phase="Phase 3"
-      icon="dollar"
-    />
-  );
+  return <Cost />;
 }

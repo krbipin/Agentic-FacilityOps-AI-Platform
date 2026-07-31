@@ -36,6 +36,7 @@ def _hourly_df(session: Session, facility_id: int) -> pd.DataFrame:
                 "hvac_kwh": r.hvac_kwh,
                 "lighting_kwh": r.lighting_kwh,
                 "equipment_kwh": r.equipment_kwh,
+                "water_l": r.water_l,
             }
             for r in rows
             if not (r.timestamp.hour == 12 and r.timestamp.minute == 0)  # exclude daily noon rows
@@ -147,6 +148,18 @@ def run(session: Session, facility_id: int) -> dict:
         "efficiency_score": 82,
         "carbon_reduction_pct": 15,
         "split": split,
+        "hourly": [
+            {
+                "hour": int(r.ts.hour),
+                "label": r.ts.strftime("%H:%M"),
+                "electricity_kwh": round(float(r.electricity_kwh), 1),
+                "hvac_kwh": round(float(r.hvac_kwh), 1),
+                "lighting_kwh": round(float(r.lighting_kwh), 1),
+                "equipment_kwh": round(float(r.equipment_kwh), 1),
+                "water_l": round(float(r.water_l), 1),
+            }
+            for r in _hourly_df(session, facility_id).itertuples(index=False)
+        ][-24:],
         "anomalies": anomalies,
         "anomaly_count_today": len([a for a in anomalies if a["timestamp"].startswith(pd.Timestamp.now().date().isoformat())]),
         "forecast": forecast,

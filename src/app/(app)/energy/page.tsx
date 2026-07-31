@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Energy } from "@/components/pages/Energy";
 
-export const metadata: Metadata = { title: "Energy" };
+export const metadata: Metadata = { title: "Energy Intelligence" };
 
 export default function EnergyPage() {
-  return (
-    <PagePlaceholder
-      title="Energy Dashboard"
-      subtitle="Monitored by the Energy Agent"
-      phase="Phase 3"
-      icon="bolt"
-    />
-  );
+  return <Energy />;
 }

@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Occupancy } from "@/components/pages/Occupancy";
 
-export const metadata: Metadata = { title: "Occupancy" };
+export const metadata: Metadata = { title: "Occupancy Intelligence" };
 
 export default function OccupancyPage() {
-  return (
-    <PagePlaceholder
-      title="Occupancy Dashboard"
-      subtitle="Monitored by the Occupancy Agent"
-      phase="Phase 3"
-      icon="users"
-    />
-  );
+  return <Occupancy />;
 }

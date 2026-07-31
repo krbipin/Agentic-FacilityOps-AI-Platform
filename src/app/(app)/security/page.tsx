@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import { Security } from "@/components/pages/Security";
 
-export const metadata: Metadata = { title: "Security" };
+export const metadata: Metadata = { title: "Security Monitoring" };
 
 export default function SecurityPage() {
-  return (
-    <PagePlaceholder
-      title="Security Dashboard"
-      subtitle="Monitored by the Security Agent"
-      phase="Phase 3"
-      icon="shield"
-    />
-  );
+  return <Security />;
 }
