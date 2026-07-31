@@ -17,6 +17,7 @@ from .models import (
     SecurityEvent,
     WorkOrder,
 )
+from .routers import include_routers
 from .seed import seed
 
 
@@ -50,6 +51,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+include_routers(app)
 
 
 @app.get("/api/health")

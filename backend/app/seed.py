@@ -294,9 +294,10 @@ def _seed_energy(session: Session, facility: Facility) -> None:
         )
 
     # Hourly series: last 72h with diurnal pattern; inject AHU-4 anomaly at 14:00 today.
+    # Minutes are offset (not :00) so hourly rows never collide with the noon daily series.
     hour_start = datetime.combine(_TODAY, datetime.min.time()) - timedelta(days=2)
     for h in range(72):
-        ts = hour_start + timedelta(hours=h)
+        ts = hour_start + timedelta(hours=h) + timedelta(minutes=int(rng.integers(1, 59)))
         hour = ts.hour
         # occupancy-ish diurnal curve, peak ~15:00
         curve = 0.55 + 0.5 * np.exp(-((hour - 14.5) ** 2) / 18.0)
@@ -331,9 +332,31 @@ ZONE_DEFS = [
 
 def _seed_occupancy(session: Session, facility: Facility) -> None:
     rng = np.random.default_rng(SEED + 3)
+
+    # Pull the daily energy series so occupancy history co-moves with it
+    # (keeps the Energy × Occupancy correlation positive).
+    energy_daily = [
+        r.electricity_kwh
+        for r in (
+            session.query(EnergyUsage)
+            .filter(EnergyUsage.facility_id == facility.id, EnergyUsage.is_forecast == False)  # noqa: E712
+            .order_by(EnergyUsage.timestamp)
+            .all()
+        )
+        if r.timestamp.hour == 12 and r.timestamp.minute == 0
+    ][-30:]
+    mean_e = float(np.mean(energy_daily)) if energy_daily else 1280.0
+    max_dev = float(np.max(np.abs(np.array(energy_daily) - mean_e))) if energy_daily else 1.0
+    devs = [(k - mean_e) / max_dev for k in energy_daily] if energy_daily else [0.0] * 30
+
     for zone, count, capacity, _ in ZONE_DEFS:
-        # 30-day history approaching today's canonical counts.
-        hist = np.linspace(int(count * 0.8), count, 30).astype(int)
+        hist = []
+        for i, dev in enumerate(devs):
+            weight = 0.9 + 0.45 * dev
+            c = int(round(count * weight))
+            if i == len(devs) - 1:
+                c = count  # today lands exactly on the canonical count
+            hist.append(max(0, min(c, capacity)))
         for i, c in enumerate(hist):
             ts = datetime.combine(_TODAY - timedelta(days=29 - i), datetime.min.time()) + timedelta(hours=12)
             session.add(
