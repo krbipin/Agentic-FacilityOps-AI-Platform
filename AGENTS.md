@@ -162,7 +162,7 @@ These values are the **canonical sample dataset** for all page specs and mock UI
 
 | # | Page | Route (proposed) | Spec file |
 |---|------|------------------|-----------|
-| 1 | Login / Sign-in | `/login` | `UI-UX-Specs/01-login.md` |
+| 1 | Sign-in / Sign-up (Clerk default) | `/sign-in` `/sign-up` | `UI-UX-Specs/01-login.md` (superseded by Clerk's default page) |
 | 2 | Facility Operations Dashboard | `/` | `UI-UX-Specs/02-facility-operations-dashboard.md` |
 | 3 | Energy Dashboard | `/energy` | `UI-UX-Specs/03-energy-dashboard.md` |
 | 4 | Maintenance Dashboard | `/maintenance` | `UI-UX-Specs/04-maintenance-dashboard.md` |
@@ -179,8 +179,15 @@ These values are the **canonical sample dataset** for all page specs and mock UI
 
 ### Global app shell (shared by all authenticated pages)
 - **Sidebar navigation** (collapsible): Overview, Energy, Maintenance, Occupancy, Security, Cost, Intelligence, Alerts, Reports, Assets, Work Orders, Copilot, Settings
-- **Topbar:** facility selector, live clock, active-alert bell with unread count, theme toggle (dark default), user menu
+- **Topbar:** facility selector, live clock, active-alert bell with unread count, theme toggle (dark default), user menu (Clerk `useUser`)
 - **Design tokens** in `.stitch/DESIGN.md`
+
+### Authentication (Clerk)
+- Clerk (`@clerk/nextjs`) guards all routes. `<ClerkProvider>` wraps `<body>` in `src/app/layout.tsx`.
+- Next.js 16 → the guard file is **`src/proxy.ts`** (`clerkMiddleware` + `createRouteMatcher`; public only: `/sign-in`, `/sign-up`). All other routes `await auth.protect()` → redirect to `/sign-in`.
+- Clerk's default pages mount `<SignIn/>`/`<SignUp/>` at `src/app/sign-in|sign-up/page.tsx` (default appearance, no customization).
+- Env (in `.env.local`, gitignored): `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_{SIGN_IN,SIGN_UP,AFTER_SIGN_IN,AFTER_SIGN_UP,SIGN_OUT_REDIRECT}_URL`.
+- Topbar user menu + Sign out use `useUser`/`useClerk().signOut({ redirectUrl: "/" })`.
 
 ---
 
