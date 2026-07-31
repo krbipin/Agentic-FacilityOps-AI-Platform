@@ -27,7 +27,7 @@ This repo contains the complete UI/UX design system and per-page specs for a 14-
 
 | # | Page | Route | Spec |
 |---|------|-------|------|
-| 1 | Login / Sign-in | `/login` | `UI-UX-Specs/01-login.md` |
+| 1 | Sign-in / Sign-up (Clerk default) | `/sign-in` `/sign-up` | `UI-UX-Specs/01-login.md` (superseded by Clerk's default page) |
 | 2 | Facility Operations Dashboard | `/` | `UI-UX-Specs/02-facility-operations-dashboard.md` |
 | 3 | Energy Dashboard | `/energy` | `UI-UX-Specs/03-energy-dashboard.md` |
 | 4 | Maintenance Dashboard | `/maintenance` | `UI-UX-Specs/04-maintenance-dashboard.md` |
