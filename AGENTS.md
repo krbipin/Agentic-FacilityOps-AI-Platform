@@ -109,7 +109,7 @@ Agentic_FacilityOps_AI_Platform/
 
 **Central component:** Facility Intelligence Engine → Aggregate Insights, Correlate Events, Generate Recommendations, Coordinate Agent Actions
 
-**Shared services:** PostgreSQL Database · Time-Series Data Warehouse · Audit Logs · Historical Facility Data
+**Shared services:** PostgreSQL Database (Neon, shared across local dev + production) · Time-Series Data Warehouse · Audit Logs · Historical Facility Data
 
 **Outputs:** Facility/Energy/Maintenance/Security/Executive Dashboards · Mobile App · Email Alerts · SMS · Teams Notifications
 
@@ -130,29 +130,25 @@ Agentic_FacilityOps_AI_Platform/
 
 **Relationships:** FACILITIES 1:N → {ASSETS, ENERGY_USAGE, OCCUPANCY_RECORDS, SECURITY_EVENTS, COST_REPORTS, ALERTS}; ASSETS 1:N → MAINTENANCE_RECORDS
 
----
+### Runtime database (PostgreSQL / Neon)
 
-## 7. Milestones & Canonical Dashboard Data
+- The backend runs on **PostgreSQL via Neon** (`psycopg[binary]`, psycopg3). One shared Neon DB serves both local dev and Render production — **local actions mutate prod data** (accepted by the team for this demo).
+- `backend/app/config.py` loads `backend/.env` (`DATABASE_URL`) and normalizes `postgresql://` → `postgresql+psycopg://`. Local fallback to SQLite only if `DATABASE_URL` is unset.
+- Secrets rule: the Neon URL lives **only** in `backend/.env` (gitignored) and the Render service env var — never in `render.yaml` or committed code.
+- Extra models beyond the canonical table above: `MeetingRoom`, `Visitor`, `Vendor` (seeded from `backend/app/seed.py`, deterministic `SEED=20260731`). Recommended/side-panel data (CCTV events, visitors, vendor spend, meeting rooms, wastage lists, recommendations) is **real seeded backend data**, never frontend fabrication.
+- Lightweight endpoints added for the global shell: `GET /api/health` (facility + record counts), `GET /api/alerts/summary` (`{total, open, acknowledged, resolved}`), `GET /api/work-orders/technicians`, `GET /api/settings/team`. Asset detail `GET /api/assets/{id}` returns `days_to_failure`/`predicted_risk` only for the top-12 risk assets (prediction is cached per facility).
 
-These values are the **canonical sample dataset** for all page specs and mock UIs.
+### Data provenance rule (frontend)
 
-### M1 Energy Intelligence (weeks 1–2)
-- Total Energy: `1.28 MWh` · Cost Savings: `$156.80` · Efficiency Score: `82%` · Carbon Reduction: `15%`
-- Energy distribution: HVAC 45% · Lighting 28% · Equipment 18% · Other 9%
-- Acceptance: anomaly detection accuracy ≥ 85%
+- **Every numeric/date/data literal on screen must come from the backend** (`src/lib/api.ts` payload types + `useApiData`). `src/components/pages/*` and `src/components/layout/Topbar.tsx` carry **no hardcoded live metrics**; all headline values (assets, MWh, health, ROI, cost reduction, occupancy, etc.) are computed live by the agents in `backend/app/agents/` from the seeded Neon data — never pinned to a spec constant.
+- Overview renders `data.kpis.{energy_mwh, facility_health}` plus `data.intelligence.kpis.{cost_reduction_pct, roi_generated, facility_health, optimizations}` — this is where the UI's old hardcoded `$1,568,000` ROI was removed.
+- The Topbar renders a backend-driven **"Sample Data"** badge (`app.sample_data_note` config key, surfaced via `/api/health`) so the synthetic seeded dataset is always labeled as sample data, never misrepresented as real telemetry.
 
-### M2 Predictive Maintenance (weeks 3–4)
-- Assets Monitored: `2450` · Maintenance Tickets: `89` · Predicted Failures: `12` · Downtime Reduction: `34%`
-- Equipment health: Excellent 68% · Good 22% · Warning 8% · Critical 2%
-
-### M3 Occupancy & Security (weeks 5–6)
-- Occupancy Rate: `73%` · Active Visitors: `342` · Security Events: `18` · Unauthorized Access: `4`
-- Zone occupancy: Office Floors 82% · Meeting Rooms 65% · Common Areas 48% · Parking 37%
-- Acceptance: occupancy forecasting accuracy ≥ 80%
-
-### M4 Cost & Enterprise (weeks 7–8)
-- Cost Reduction: `23%` · ROI Generated: `$2.4M` · Facility Health: `94/100` · Optimizations: `18`
-- Cost distribution: Energy 38% · Maintenance 25% · Security Ops 18% · Administrative 19%
+### Live simulation & polling
+- **Sim clock:** `backend/app/live.py` advances a 1-minute tick of `EnergyUsage`/`OccupancyRecord` per real minute (capped catch-up), idempotent per `(facility_id, timestamp)`. Noon (12:00) rows are the daily-summary series and are excluded from minute aggregation.
+- **Weekend model:** business-day diurnal curve runs every day (weekends included) so the demo stays lively — `day_factor()` no longer collapses on `weekday() >= 5`.
+- **Agent cache:** each agent caches its payload for `45s` (`backend/app/cache.py`, `cached(f"{agent}:{facility_id}", 45.0, ...)`); `estimate_impact` is cached 120s per `(agent, title)`. Cached reads are ~1–7s; cold full-mesh (overview/reports/intelligence) ~10–20s on Neon.
+- **Frontend polling:** `useApiData(path, fallback, intervalMs)` (default no polling). Dashboards + Topbar poll every `15000ms`; Assets/WorkOrders/Copilot/Settings every `30000ms`. The Topbar "Live" badge, 1s clock, and alert bell (15s) are the liveness indicators.
 
 ---
 

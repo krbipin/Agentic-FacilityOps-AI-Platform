@@ -23,6 +23,27 @@ This repo contains the complete UI/UX design system and per-page specs for a 14-
 
 ---
 
+## Data pipeline & sample dataset
+
+The live app is a full stack: **Next.js 14 frontend (14 pages) → FastAPI agents (`backend/app/agents/`) → PostgreSQL (Neon)**. The frontend polls the agents every 15–30s; agents run analytics, ML predictions, and a live 1-minute simulation.
+
+**Sample dataset.** `backend/app/seed.py` generates a deterministic synthetic 90-day history (`SEED=20260731`): 2,450 assets with maintenance records, minute-level energy + occupancy series, security events, 6-month cost reports, and 64 work orders. This represents an *established facility* so every dashboard is demonstrable out of the box.
+
+**Data integrity.** No on-screen number is hardcoded. Every KPI (energy MWh, facility health, cost savings, ROI, occupancy, predicted failures, …) is computed live by the agents from this database. The Topbar shows a **"Sample Data"** badge to make the synthetic source explicit. Historical rows are deterministic and reproducible; the live simulation advances the clock 1 real minute at a time (`backend/app/live.py`, cached 45s per agent).
+
+**KPI derivation cheat-sheet** (full detail in each agent's docstring):
+
+| KPI | How it's computed |
+|-----|-------------------|
+| Energy efficiency | `100 − \|today vs 7-day baseline\|` (%) on time-of-day–matched slices; savings/carbon from baseline delta × config tariff & emission factor |
+| Maintenance | RandomForest failure-risk 0–99 per asset (health, useful life, days since maintenance); downtime from work-order cycle comparisons |
+| Occupancy | Latest live per-zone snapshots; forecast = linear extrapolation of noon history + residual band; accuracy = model-vs-actual MAPE |
+| Security | Event counts/severities from `security_events`; doors & camera uptime from config; visitors from `visitors` table |
+| Cost | Spend from latest `CostReport` rows; trend = linear extrapolation of each category's 6-month series; ROI = realized savings × config multiplier (6.2) |
+| Intelligence | Cross-correlates energy × occupancy; weighted facility health from each agent's live health; recommendation impacts computed at runtime |
+
+---
+
 ## The 14 pages
 
 | # | Page | Route | Spec |
