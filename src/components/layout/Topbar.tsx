@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icons";
 import { cn } from "@/components/ui/cn";
 
@@ -126,6 +127,7 @@ export function Topbar({
 }) {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const router = useRouter();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   const displayName = user
@@ -267,6 +269,7 @@ export function Topbar({
               <p className="px-4 pb-1.5 pt-1 font-label-caps text-label-caps text-steel-slate/60 uppercase">
                 {isLoaded ? displayName : "Account"}
               </p>
+              <MenuItem icon="users" label="Profile" onSelect={() => router.push("/user")} />
               <MenuItem icon="settings" label="Settings" onSelect={close} />
               <MenuItem icon="fileText" label="My reports" onSelect={close} />
               <div className="my-1.5 h-px bg-hairline-slate" aria-hidden="true" />
