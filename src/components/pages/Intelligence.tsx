@@ -18,7 +18,7 @@ const EMPTY: IntelligencePayload = {
   engine: "", facility_health: 0, agent_health: {},
   kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 },
   correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [],
-  recommendations: [], optimizations: 0,
+  recommendations: [], optimizations: 0, roi_multiple: 0, explanation: "",
 };
 
 const sevTone: Record<string, Tone> = { Red: "red", Amber: "amber", Blue: "blue" };
@@ -36,7 +36,7 @@ const agentIcon: Record<string, IconName> = {
 type Filter = "All" | "Anomalies" | "Forecasts" | "Correlations" | "Health";
 
 export function Intelligence() {
-  const { data, loading, error, refresh } = useApiData<IntelligencePayload>("/api/dashboards/intelligence", EMPTY);
+  const { data, loading, error, refresh } = useApiData<IntelligencePayload>("/api/dashboards/intelligence", EMPTY, 15000);
   const [filter, setFilter] = useState<Filter>("All");
   const [explain, setExplain] = useState(false);
   const [expandedCorr, setExpandedCorr] = useState<string | null>(null);
@@ -99,15 +99,15 @@ export function Intelligence() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta="▼ 23% this quarter" deltaTone="green" sub="vs baseline spend" />
-        <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta="▲ 6.2x multiple" deltaTone="green" sub="Since program start" />
-        <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" delta="▲ 2" deltaTone="green" sub="Cross-agent score" />
-        <KpiCard label="Optimizations Live" value={fmtInt(kpis.optimizations)} icon="sparkles" delta="+3 this week" deltaTone="steel" sub="Applied by AI agents" />
+        <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta={`▼ ${kpis.cost_reduction_pct}% this quarter`} deltaTone="green" sub="vs baseline spend" />
+        <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta={`▲ ${data.roi_multiple}x multiple`} deltaTone="green" sub="Since program start" />
+        <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" sub="Cross-agent score" />
+        <KpiCard label="Optimizations Live" value={fmtInt(kpis.optimizations)} icon="sparkles" sub="Applied by AI agents" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card className={filter === "Health" ? "ring-1 ring-violet/30" : ""}>
-          <CardHeader title="Facility Health Score" subtitle="Violet arc · 30d trend" right={<Chip tone="violet">94/100</Chip>} />
+          <CardHeader title="Facility Health Score" subtitle="Violet arc · 30d trend" right={<Chip tone="violet">{data.facility_health}/100</Chip>} />
           <div className="flex flex-wrap items-center gap-6">
             <Gauge value={data.facility_health} label="Health" size={150} color="var(--color-violet)" />
             <div className="min-w-[200px] flex-1 space-y-2.5">
@@ -122,10 +122,9 @@ export function Intelligence() {
               ))}
             </div>
           </div>
-          {explain && (
+          {explain && data.explanation && (
             <p className="mt-4 rounded-control border border-hairline-slate bg-elevated-slate p-3 text-body-sm text-steel-slate">
-              Energy improved 4pts after the AHU schedule change on Jul 14. Security is the weakest domain —
-              badge-duplication gaps were closed this week.
+              {data.explanation}
             </p>
           )}
         </Card>
@@ -218,8 +217,8 @@ export function Intelligence() {
                 </thead>
                 <tbody className="divide-y divide-hairline-slate">
                   {recommendations.slice(0, 5).map((r, i) => (
-                    <tr key={r.title} className="text-steel-slate">
-                      <td className="py-3 pr-4 font-mono text-caption">REC-{String(i + 1).padStart(3, "0")}</td>
+                    <tr key={r.id ?? r.title} className="text-steel-slate">
+                      <td className="py-3 pr-4 font-mono text-caption">REC-{String(r.id ?? i + 1).padStart(3, "0")}</td>
                       <td className="py-3 pr-4"><Chip tone="violet">{r.agent}</Chip></td>
                       <td className="max-w-[320px] py-3 pr-4 text-ice-white">{r.title}</td>
                       <td className="py-3 pr-4 font-mono text-caption">{r.impact}</td>

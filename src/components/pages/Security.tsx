@@ -15,13 +15,14 @@ const EMPTY: SecurityPayload = {
   facility: { name: "", facility_type: "", location: "" }, agent: "", events_today: 0,
   unauthorized_access: 0, active_visitors: 0, severity_counts: { Red: 0, Amber: 0, Blue: 0 },
   doors: { controlled_doors: 0, monitored_zones: 0 }, burst_hours: [], events: [],
+  camera_uptime_pct: 0, cctv_events: [], visitors: [], security_recommendations: [],
 };
 
 const sevTone: Record<string, Tone> = { Red: "red", Amber: "amber", Blue: "blue" };
 const sevColor = { Red: "var(--color-alert-red)", Amber: "var(--color-alert-amber)", Blue: "var(--color-primary)" };
 
 export function Security() {
-  const { data, loading, error, refresh } = useApiData<SecurityPayload>("/api/dashboards/security", EMPTY);
+  const { data, loading, error, refresh } = useApiData<SecurityPayload>("/api/dashboards/security", EMPTY, 15000);
 
   if (loading) {
     return (
@@ -58,7 +59,7 @@ export function Security() {
         <KpiCard label="Security Events" value={fmtInt(data.events_today)} icon="alert" delta="Last 24h" deltaTone="steel" sub="All severities" />
         <KpiCard label="Unauthorized Access" value={fmtInt(data.unauthorized_access)} icon="shield" delta="High priority" deltaTone="red" sub="Blocked & flagged" />
         <KpiCard label="Active Visitors" value={fmtInt(data.active_visitors)} icon="users" delta="On site now" deltaTone="green" sub="Check-ins today" />
-        <KpiCard label="Doors Secured" value={`${data.doors.controlled_doors} / ${data.doors.controlled_doors}`} icon="lock" delta="All online" deltaTone="green" sub="Camera uptime 99.98%" />
+        <KpiCard label="Doors Secured" value={`${data.doors.controlled_doors} / ${data.doors.monitored_zones}`} icon="lock" delta="All online" deltaTone="green" sub={`Camera uptime ${data.camera_uptime_pct}%`} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
@@ -102,17 +103,18 @@ export function Security() {
       <Card className="mt-6">
         <CardHeader title="CCTV Event Analysis" subtitle="AI-analyzed feeds" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {[
-            { tag: "Person loitering · Dock B", conf: 91 },
-            { tag: "Badge duplicate · Server Room A", conf: 87 },
-            { tag: "Unattended package · Lobby", conf: 74 },
-          ].map((c) => (
-            <div key={c.tag} className="flex aspect-video flex-col justify-end rounded-card border border-hairline-slate bg-elevated-slate p-3">
+          {data.cctv_events.length === 0 && (
+            <div className="col-span-full rounded-card border border-hairline-slate bg-elevated-slate p-4 text-center text-body-sm text-steel-slate">
+              No CCTV events detected in the last 24h
+            </div>
+          )}
+          {data.cctv_events.map((c) => (
+            <div key={c.id} className="flex aspect-video flex-col justify-end rounded-card border border-hairline-slate bg-elevated-slate p-3">
               <div className="flex items-center justify-between">
                 <Icon name="eye" className="text-primary" size={16} />
-                <span className="font-mono text-caption text-violet">{c.conf}%</span>
+                <span className="font-mono text-caption" style={{ color: (sevColor as Record<string, string>)[c.severity] ?? "var(--color-violet)" }}>{c.severity}</span>
               </div>
-              <p className="mt-2 text-body-sm text-ice-white">{c.tag}</p>
+              <p className="mt-2 text-body-sm text-ice-white">{c.title} · {c.location}</p>
             </div>
           ))}
         </div>
@@ -132,18 +134,17 @@ export function Security() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline-slate">
-                {[
-                  ["R. Sharma", "Schneider Electric", "HVAC audit", "Checked in"],
-                  ["L. Nguyen", "Siemens", "Firmware update", "On site"],
-                  ["P. Costa", "KONE", "Elevator PM", "On site"],
-                  ["A. Kim", "Dell", "Rack install", "Checked out"],
-                  ["M. Osei", "Grundfos", "Pump calibration", "Checked out"],
-                ].map(([name, company, purpose, status]) => (
-                  <tr key={name} className="text-steel-slate">
-                    <td className="py-2.5 pr-4 text-ice-white">{name}</td>
-                    <td className="py-2.5 pr-4">{company}</td>
-                    <td className="py-2.5 pr-4">{purpose}</td>
-                    <td className="py-2.5"><Chip tone={status === "On site" ? "blue" : "green"}>{status}</Chip></td>
+                {data.visitors.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-body-sm text-steel-slate">No visitors checked in today</td>
+                  </tr>
+                )}
+                {data.visitors.map((v) => (
+                  <tr key={v.name} className="text-steel-slate">
+                    <td className="py-2.5 pr-4 text-ice-white">{v.name}</td>
+                    <td className="py-2.5 pr-4">{v.company}</td>
+                    <td className="py-2.5 pr-4">{v.purpose}</td>
+                    <td className="py-2.5"><Chip tone={v.status === "On site" ? "blue" : "green"}>{v.status}</Chip></td>
                   </tr>
                 ))}
               </tbody>
@@ -154,15 +155,14 @@ export function Security() {
         <Card>
           <CardHeader title="Security Recommendations" subtitle="Security Agent" />
           <ul role="list" className="divide-y divide-hairline-slate">
-            {[
-              { title: "Require 2FA on Server Room A access", impact: "High impact" },
-              { title: "Resolve badge-duplication alert pattern", impact: "Reduces false positives" },
-              { title: "Enable night camera preset on Dock B", impact: "Improves coverage" },
-            ].map((r) => (
+            {data.security_recommendations.length === 0 && (
+              <li className="py-8 text-center text-body-sm text-steel-slate">No recommendations right now</li>
+            )}
+            {data.security_recommendations.map((r) => (
               <li key={r.title} className="flex items-center gap-3 py-3">
                 <Icon name="shield" className="shrink-0 text-primary" size={16} />
                 <span className="min-w-0 flex-1 text-body-sm text-ice-white">{r.title}</span>
-                <Chip tone="blue">{r.impact}</Chip>
+                <Chip tone={r.status === "Applied" ? "green" : "blue"}>{r.impact}</Chip>
                 <Button variant="ghost" size="sm">Enable</Button>
               </li>
             ))}

@@ -9,13 +9,28 @@ import { Icon, type IconName } from "@/components/ui/icons";
 import { useToast } from "@/components/ui/Toast";
 import { fetcher, type CopilotAgentsPayload } from "@/lib/api";
 
+interface ChatStep {
+  agent: string;
+  step: string;
+  detail: string;
+}
+
+interface ChatResponse {
+  reply: string;
+  agents_collaborated: number;
+  reasoning: ChatStep[];
+}
+
 interface Message {
   id: number;
   role: "user" | "copilot";
   text: string;
   agents: string[];
-  reasoning?: string;
+  reasoning: ChatStep[];
+  collaborated: number;
 }
+
+const EMPTY: CopilotAgentsPayload = { agents: [], facility_health: 0, correlations: [] };
 
 const SUGGESTIONS = [
   "Summarize today's energy anomalies",
@@ -48,19 +63,24 @@ export function Copilot() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
-  const [agents, setAgents] = useState<CopilotAgentsPayload["agents"]>([]);
+  const [data, setData] = useState<CopilotAgentsPayload>(EMPTY);
   const bottomRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
   useEffect(() => {
     let cancelled = false;
-    fetcher<CopilotAgentsPayload>("/api/copilot/agents")
-      .then((d) => {
-        if (!cancelled) setAgents(d.agents);
-      })
-      .catch(() => {});
+    const run = () => {
+      fetcher<CopilotAgentsPayload>("/api/copilot/agents")
+        .then((d) => {
+          if (!cancelled) setData(d);
+        })
+        .catch(() => {});
+    };
+    run();
+    const id = window.setInterval(run, 30000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -68,7 +88,7 @@ export function Copilot() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activity]);
 
-  const postChat = useCallback(async (message: string): Promise<{ reply: string; agents_collaborated: number }> => {
+  const postChat = useCallback(async (message: string): Promise<ChatResponse> => {
     const res = await fetch("/api/copilot/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -81,41 +101,39 @@ export function Copilot() {
   const send = useCallback(async (text: string) => {
     const q = text.trim();
     if (!q || sending) return;
-    const userMsg: Message = { id: nextId.current++, role: "user", text: q, agents: [] };
+    const userMsg: Message = { id: nextId.current++, role: "user", text: q, agents: [], reasoning: [], collaborated: 0 };
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setSending(true);
-    setActivity(["Facility Intelligence Engine → dispatching query…", "Energy Agent → querying ENERGY_USAGE…", "Maintenance Agent → scoring assets…"]);
+    setActivity(["Facility Intelligence Engine → dispatching query across agent mesh"]);
     try {
       const body = await postChat(q);
-      setActivity((a) => [...a.slice(0, 3), "Security Agent → verified perimeter logs ✓", "Cost Optimization Agent → estimating avoidable spend ✓"]);
+      setActivity(body.reasoning.map((r) => `${r.agent} → ${r.step}`));
       setMessages((m) => [
         ...m,
         {
           id: nextId.current++,
           role: "copilot",
           text: body.reply,
-          agents: agents.slice(0, 3).map((a) => a.name),
-          reasoning:
-            "Energy Agent: detected AHU-4 draw 18% above baseline at 14:32 (ENERGY_USAGE, Corporate HQ & IT Park). " +
-            "Maintenance Agent: 12 predicted failures, top risk AHU-4 at 92%. " +
-            "Cost Optimization Agent: $2,100/mo opportunity shifting data-center load off-peak.",
+          agents: [...new Set(body.reasoning.map((r) => r.agent))],
+          reasoning: body.reasoning,
+          collaborated: body.agents_collaborated,
         },
       ]);
     } catch {
       toast("Agents offline — reply limited to cached data", "error");
-      setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: "Agents offline — replies limited to local cache.", agents: [], reasoning: "No reasoning trace for cached answer." }]);
+      setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: "Agents offline — replies limited to local cache.", agents: [], reasoning: [], collaborated: 0 }]);
     } finally {
       setSending(false);
       setActivity([]);
     }
-  }, [sending, agents, toast, postChat]);
+  }, [sending, postChat, toast]);
 
   return (
     <div>
       <PageIntro
         title="Facility Copilot"
-        subtitle="5 agents standing by · Facility Intelligence Engine orchestrating"
+        subtitle={`${data.agents.length} agents standing by · Facility Intelligence Engine orchestrating`}
         agent="Facility Intelligence Engine"
         actions={
           <Button variant="secondary" size="sm" onClick={() => { setMessages([]); setActivity([]); toast("New conversation started"); }}>
@@ -164,10 +182,18 @@ export function Copilot() {
                               <Icon name={agentIcon[a] ?? "cpu"} size={10} className={a in agentColor ? "text-inherit" : ""} /> {a.replace(" Agent", "")} ✓ consulted
                             </Chip>
                           ))}
+                          {m.collaborated > 0 && <Chip tone="violet">{m.collaborated} agents collaborated</Chip>}
                         </div>
                         <details className="mt-2">
                           <summary className="cursor-pointer text-caption text-violet">Show reasoning</summary>
-                          <p className="mt-2 text-caption text-steel-slate">{m.reasoning}</p>
+                          <ul role="list" className="mt-2 space-y-1.5">
+                            {m.reasoning.map((r) => (
+                              <li key={`${r.agent}-${r.step}`} className="text-caption text-steel-slate">
+                                <span className="font-medium text-violet">{r.agent}:</span> {r.step} — {r.detail}
+                              </li>
+                            ))}
+                            {m.reasoning.length === 0 && <li className="text-caption text-steel-slate/70">No reasoning trace for this reply.</li>}
+                          </ul>
                         </details>
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => toast("Work order drafted", "success")}>
@@ -226,7 +252,7 @@ export function Copilot() {
           <div className="flex-1 overflow-y-auto px-5 pb-4">
             {activity.map((line, i) => (
               <p key={i} className="flex items-start gap-2 py-1.5 text-caption text-steel-slate">
-                <span className={line.endsWith("✓") ? "text-signal-green" : line.includes("dispatching") ? "text-violet" : "text-steel-slate"}>
+                <span className={line.endsWith("✓") ? "text-signal-green" : line.toLowerCase().includes("dispatching") ? "text-violet" : "text-steel-slate"}>
                   <Icon name={line.endsWith("✓") ? "check" : "cpu"} size={12} />
                 </span>
                 {line}
@@ -237,7 +263,7 @@ export function Copilot() {
           <div className="border-t border-hairline-slate px-5 py-4">
             <h4 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Standing by</h4>
             <ul role="list" className="mt-2 space-y-2">
-              {agents.map((a) => (
+              {data.agents.map((a) => (
                 <li key={a.name} className="flex items-center gap-2">
                   <span className="rounded-md bg-panel-slate p-1.5" style={{ color: agentColor[a.name] ?? "var(--color-steel-slate)" }}>
                     <Icon name={agentIcon[a.name] ?? "cpu"} size={14} />
@@ -249,6 +275,23 @@ export function Copilot() {
                   <span className={`size-2 rounded-full ${a.status === "coordinating" ? "bg-violet" : "bg-signal-green"}`} aria-hidden="true" />
                 </li>
               ))}
+              {data.agents.length === 0 && <li className="text-caption text-steel-slate/70">No agents reporting — is the backend running?</li>}
+            </ul>
+          </div>
+          <div className="border-t border-hairline-slate px-5 py-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Facility health</h4>
+              <Chip tone="violet">{data.facility_health}/100</Chip>
+            </div>
+            <h4 className="mt-3 font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Correlations</h4>
+            <ul role="list" className="mt-2 space-y-1.5">
+              {data.correlations.map((c) => (
+                <li key={c.pair} className="flex items-center justify-between text-caption text-steel-slate">
+                  <span>{c.pair}</span>
+                  <span className="font-mono text-violet">r = {c.r.toFixed(2)}</span>
+                </li>
+              ))}
+              {data.correlations.length === 0 && <li className="text-caption text-steel-slate/70">No correlations computed yet</li>}
             </ul>
           </div>
         </Card>

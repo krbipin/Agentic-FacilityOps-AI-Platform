@@ -11,7 +11,7 @@ import { TextField, SelectField } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
-import { fetcher, patch, type WorkOrderItem } from "@/lib/api";
+import { fetcher, patch, type AssetItem, type WorkOrderItem } from "@/lib/api";
 
 const COLUMNS: { key: string; label: string; tone: Tone }[] = [
   { key: "Open", label: "Open", tone: "red" },
@@ -36,18 +36,33 @@ export function WorkOrders() {
   const [autoCreate, setAutoCreate] = useState(false);
   const [notes, setNotes] = useState("");
   const [completeOpen, setCompleteOpen] = useState(false);
+  const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [technicians, setTechnicians] = useState<string[]>([]);
+  const [defaultDue] = useState(() => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10));
 
   useEffect(() => {
     let cancelled = false;
-    fetcher<WorkOrderItem[]>("/api/work-orders")
-      .then((d) => {
-        if (!cancelled) setOrders(d);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const run = () => {
+      Promise.all([
+        fetcher<WorkOrderItem[]>("/api/work-orders"),
+        fetcher<{ items: AssetItem[] }>("/api/assets?limit=50"),
+        fetcher<{ technicians: string[] }>("/api/work-orders/technicians"),
+      ])
+        .then(([d, a, t]) => {
+          if (cancelled) return;
+          setOrders(d);
+          setAssets(a.items);
+          setTechnicians(t.technicians);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    run();
+    const id = window.setInterval(run, 30000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -94,7 +109,7 @@ export function WorkOrders() {
     <div>
       <PageIntro
         title="Work Orders"
-        subtitle={`${orders.length} tickets · 12 predicted failures flagged`}
+        subtitle={`${orders.length} tickets · ${aiOrders.length} predicted failures flagged`}
         agent="Maintenance Agent"
         actions={
           <>
@@ -105,7 +120,7 @@ export function WorkOrders() {
                 checked={autoCreate}
                 onChange={(e) => {
                   setAutoCreate(e.target.checked);
-                  toast(e.target.checked ? "12 draft tickets generated" : "Auto-create disabled", "success");
+                  toast(e.target.checked ? `${aiOrders.length} draft tickets generated` : "Auto-create disabled", "success");
                 }}
                 className="size-4 accent-[var(--color-primary)]"
               />
@@ -295,10 +310,11 @@ export function WorkOrders() {
         }
       >
         <div className="grid grid-cols-1 gap-4">
-          <SelectField label="Asset" defaultValue="AST-1042">
-            <option value="AST-1042">AST-1042 · AHU-4</option>
-            <option value="AST-2031">AST-2031 · Elev-4</option>
-            <option value="AST-3044">AST-3044 · VRF-12</option>
+          <SelectField label="Asset" defaultValue="">
+            <option value="">Select asset</option>
+            {assets.map((a) => (
+              <option key={a.id} value={a.id}>{a.id} · {a.name}</option>
+            ))}
           </SelectField>
           <TextField label="Issue type" placeholder="Vibration excessive" />
           <SelectField label="Priority" defaultValue="P2">
@@ -308,12 +324,11 @@ export function WorkOrders() {
           </SelectField>
           <SelectField label="Assignee" defaultValue="">
             <option value="">Unassigned</option>
-            <option>SM</option>
-            <option>JD</option>
-            <option>AP</option>
-            <option>KS</option>
+            {technicians.map((t) => (
+              <option key={t}>{t}</option>
+            ))}
           </SelectField>
-          <TextField label="Due date" defaultValue="2026-08-07" />
+          <TextField label="Due date" type="date" defaultValue={defaultDue} />
         </div>
       </Modal>
 

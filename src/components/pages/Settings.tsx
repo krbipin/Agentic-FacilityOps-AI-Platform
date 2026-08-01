@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageIntro } from "@/components/PageIntro";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -10,12 +10,31 @@ import { SelectField, TextField } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/misc";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
-import { useApiData, type SettingsIntegrationsPayload } from "@/lib/api";
+import { useApiData, type IntelligencePayload, type SettingsIntegrationsPayload } from "@/lib/api";
 
 const SECTIONS = ["Notifications", "Agents", "Facilities", "Integrations", "Team & Roles", "Appearance", "Security", "API"] as const;
 type Section = (typeof SECTIONS)[number];
 
 const EMPTY_INTEGRATIONS: SettingsIntegrationsPayload = { items: [] };
+
+const EMPTY_TEAM: { members: { name: string; email: string; role: string }[] } = { members: [] };
+
+const EMPTY_INTELLIGENCE: IntelligencePayload = {
+  facility: { name: "", facility_type: "", location: "" },
+  engine: "",
+  facility_health: 0,
+  agent_health: {},
+  kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 },
+  correlations: [],
+  anomaly_sources: [],
+  anomaly_feed: [],
+  collaboration: [],
+  forecasts: [],
+  recommendations: [],
+  optimizations: 0,
+  roi_multiple: 0,
+  explanation: "",
+};
 
 const CHANNELS = [
   { id: "email", name: "Email", status: "Connected", detail: "smtp.facilityops.ai" },
@@ -25,38 +44,30 @@ const CHANNELS = [
 ];
 
 const AGENTS = [
-  { id: "energy", name: "Energy Agent", module: "Energy Monitoring", health: 88, threshold: "≥85% accuracy" },
-  { id: "maintenance", name: "Maintenance Agent", module: "Predictive Maintenance", health: 91, threshold: "≥85% precision" },
-  { id: "occupancy", name: "Occupancy Agent", module: "Space Utilization", health: 85, threshold: "≥80% forecast" },
-  { id: "security", name: "Security Agent", module: "Access & CCTV", health: 79, threshold: "4 events/h" },
-  { id: "cost", name: "Cost Optimization Agent", module: "OPEX Analysis", health: 93, threshold: "≥5% savings" },
+  { id: "energy", name: "Energy Agent", module: "Energy Monitoring", threshold: "≥85% accuracy" },
+  { id: "maintenance", name: "Maintenance Agent", module: "Predictive Maintenance", threshold: "≥85% precision" },
+  { id: "occupancy", name: "Occupancy Agent", module: "Space Utilization", threshold: "≥80% forecast" },
+  { id: "security", name: "Security Agent", module: "Access & CCTV", threshold: "4 events/h" },
+  { id: "cost", name: "Cost Optimization Agent", module: "OPEX Analysis", threshold: "≥5% savings" },
 ];
 
-const ROLES = [
-  { role: "Admin", members: 2 },
-  { role: "Facility Manager", members: 4 },
-  { role: "Technician", members: 18 },
-  { role: "Auditor", members: 3 },
-  { role: "Viewer", members: 12 },
-];
-
-const INTEGRATIONS = [
-  { name: "IoT Sensors", status: "Connected" },
-  { name: "HVAC vendor (BACnet)", status: "Connected" },
-  { name: "CCTV", status: "Connected" },
-  { name: "Access control", status: "Connected" },
-  { name: "CMMS / asset", status: "Connected" },
-  { name: "Weather API", status: "Pending" },
-  { name: "Web research connector", status: "Optional" },
-];
+const ROLES = ["Admin", "Facility Manager", "Technician", "Auditor", "Viewer"] as const;
 
 export function Settings() {
   const { toast } = useToast();
   const [section, setSection] = useState<Section>("Notifications");
-  const integrations = useApiData<SettingsIntegrationsPayload>("/api/settings/integrations", EMPTY_INTEGRATIONS);
+  const integrations = useApiData<SettingsIntegrationsPayload>("/api/settings/integrations", EMPTY_INTEGRATIONS, 30000);
+  const team = useApiData<{ members: { name: string; email: string; role: string }[] }>("/api/settings/team", EMPTY_TEAM, 30000);
+  const intelligence = useApiData<IntelligencePayload>("/api/dashboards/intelligence", EMPTY_INTELLIGENCE, 30000);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({ email: true, sms: true, teams: true, slack: false });
   const [agentOn, setAgentOn] = useState<Record<string, boolean>>({ energy: true, maintenance: true, occupancy: true, security: true, cost: true });
   const [sensitivity, setSensitivity] = useState<Record<string, string>>({ energy: "Normal", maintenance: "High", occupancy: "Normal", security: "High", cost: "Normal" });
+
+  const roleCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of team.data.members) counts.set(m.role, (counts.get(m.role) ?? 0) + 1);
+    return counts;
+  }, [team.data.members]);
 
   const toggle = (label: string) => (next: boolean) => {
     toast(`${label} ${next ? "enabled" : "disabled"}`, "success");
@@ -156,7 +167,7 @@ export function Settings() {
                         {a.name}
                         <Chip tone={agentOn[a.id] ? "green" : "amber"}>{agentOn[a.id] ? "Online" : "Paused"}</Chip>
                       </p>
-                      <p className="text-caption text-steel-slate">{a.module} · health {a.health}/100 · threshold {a.threshold}</p>
+                      <p className="text-caption text-steel-slate">{a.module} · health {intelligence.data.agent_health[a.id] ?? "—"}/100 · threshold {a.threshold}</p>
                     </div>
                     <Toggle checked={agentOn[a.id]} onChange={(v) => { setAgentOn((s) => ({ ...s, [a.id]: v })); toggle(a.name)(v); }} label={`${a.name} enabled`} />
                   </div>
@@ -202,18 +213,21 @@ export function Settings() {
           <Card className="p-card-padding">
             <CardHeader title="Integrations" subtitle="Data sources and vendors" />
             <ul role="list" className="divide-y divide-hairline-slate">
-              {INTEGRATIONS.map((i) => (
-                <li key={i.name} className="flex flex-wrap items-center justify-between gap-2 py-3">
+              {integrations.data.items.map((i) => (
+                <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
                   <div className="flex items-center gap-3">
-                    <span className={`size-2 rounded-full ${i.status === "Connected" ? "bg-signal-green" : i.status === "Pending" ? "bg-alert-amber" : "bg-steel-slate"}`} aria-hidden="true" />
+                    <span className={`size-2 rounded-full ${i.status === "Connected" ? "bg-signal-green" : i.status === "Pending" || i.status === "Degraded" ? "bg-alert-amber" : "bg-steel-slate"}`} aria-hidden="true" />
                     <span className="text-body-sm text-ice-white">{i.name}</span>
-                    <Chip tone={i.status === "Connected" ? "green" : i.status === "Pending" ? "amber" : "steel"}>{i.status}</Chip>
+                    <Chip tone={i.status === "Connected" ? "green" : i.status === "Pending" || i.status === "Degraded" ? "amber" : "steel"}>{i.status}</Chip>
                   </div>
                   <Button size="sm" variant={i.status === "Connected" ? "secondary" : "primary"} onClick={() => toast(`${i.name} connected`, "success")}>
-                    {i.status === "Connected" ? "Configure" : i.status === "Pending" ? "Connect" : "Enable"}
+                    {i.status === "Connected" ? "Configure" : "Connect"}
                   </Button>
                 </li>
               ))}
+              {integrations.data.items.length === 0 && (
+                <li className="py-4 text-center text-caption text-steel-slate">No integrations configured</li>
+              )}
             </ul>
           </Card>
         );
@@ -224,12 +238,15 @@ export function Settings() {
             <CardHeader title="Team & Roles" subtitle="Role-based access" right={<Button size="sm" onClick={() => toast("Invite sent (demo)", "success")}>Invite</Button>} />
             <ul role="list" className="divide-y divide-hairline-slate">
               {ROLES.map((r) => (
-                <li key={r.role} className="flex items-center justify-between py-3">
-                  <span className="text-body-sm text-ice-white">{r.role}</span>
-                  <Chip tone="steel">{r.members} members</Chip>
+                <li key={r} className="flex items-center justify-between py-3">
+                  <span className="text-body-sm text-ice-white">{r}</span>
+                  <Chip tone="steel">{roleCounts.get(r) ?? 0} members</Chip>
                 </li>
               ))}
             </ul>
+            {team.data.members.length === 0 && (
+              <p className="mt-4 rounded-control border border-hairline-slate bg-elevated-slate p-3 text-caption text-steel-slate">No team members synced from the backend yet.</p>
+            )}
           </Card>
         );
 

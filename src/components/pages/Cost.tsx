@@ -16,6 +16,7 @@ import { fmtInt, fmtMoney } from "@/lib/format";
 const EMPTY: CostPayload = {
   facility: { name: "", facility_type: "", location: "" }, agent: "", total_spend: 0, total_budget: 0,
   cost_reduction_pct: 0, roi_generated: 0, optimizations: 0, distribution: {}, categories: [], facility_health: 0,
+  savings: [], monthly_trend: [], vendor_spend: [], realized_savings: 0, roi_multiple: 0,
 };
 
 const DIST_COLORS = {
@@ -26,7 +27,7 @@ const DIST_COLORS = {
 };
 
 export function Cost() {
-  const { data, loading, error, refresh } = useApiData<CostPayload>("/api/dashboards/cost", EMPTY);
+  const { data, loading, error, refresh } = useApiData<CostPayload>("/api/dashboards/cost", EMPTY, 15000);
   const { toast } = useToast();
 
   if (loading) {
@@ -58,11 +59,8 @@ export function Cost() {
     color: (DIST_COLORS as Record<string, string>)[label] ?? "var(--color-steel-slate)",
   }));
 
-  const savings = [
-    { title: "Optimize HVAC schedule across floors 2–4", impact: "$4,800/mo", annual: "$57.6k" },
-    { title: "Renegotiate janitorial vendor contract", impact: "$3,200/mo", annual: "$38.4k" },
-    { title: "Shift data-center load to off-peak energy", impact: "$2,100/mo", annual: "$25.2k" },
-  ];
+  const overBudget = data.categories.find((c) => c.over_budget);
+  const trend = data.monthly_trend.map((p) => ({ label: p.month, value: p.amount }));
 
   return (
     <div>
@@ -79,9 +77,9 @@ export function Cost() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard label="Cost Reduction" value={`${data.cost_reduction_pct}%`} icon="dollar" delta="▼ YoY" deltaTone="green" sub="Compared to last year" />
-        <KpiCard label="ROI Generated" value={fmtMoney(data.roi_generated, true)} icon="chart" delta="6.2x multiple" deltaTone="green" sub="Since program start" />
-        <KpiCard label="Facility Health" value={`${data.facility_health}/100`} icon="brain" delta="▲ 2" deltaTone="green" sub="Cross-agent score" />
-        <KpiCard label="Optimizations Live" value={fmtInt(data.optimizations)} icon="sparkles" delta="+3 this week" deltaTone="steel" sub="Applied by AI agents" />
+        <KpiCard label="ROI Generated" value={fmtMoney(data.roi_generated, true)} icon="chart" delta={`${data.roi_multiple}x multiple`} deltaTone="green" sub="Since program start" />
+        <KpiCard label="Facility Health" value={`${data.facility_health}/100`} icon="brain" sub="Cross-agent score" />
+        <KpiCard label="Optimizations Live" value={fmtInt(data.optimizations)} icon="sparkles" sub="Applied by AI agents" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
@@ -117,8 +115,9 @@ export function Cost() {
             ))}
           </div>
           <p className="mt-4 text-caption text-steel-slate">
-            Total {fmtMoney(data.total_spend)} of {fmtMoney(data.total_budget)} budget ·{" "}
-            <span className="text-alert-red">Administrative {fmtMoney(78280 - 75000)} over</span>
+            Total {fmtMoney(data.total_spend)} of {fmtMoney(data.total_budget)} budget{overBudget && (
+              <> · <span className="text-alert-red">{overBudget.category} {fmtMoney(overBudget.amount - overBudget.budget)} over</span></>
+            )}
           </p>
         </Card>
       </div>
@@ -126,12 +125,15 @@ export function Cost() {
       <Card className="mt-6">
         <CardHeader title="Savings Opportunities" subtitle="Cost Optimization Agent" />
         <ul role="list" className="divide-y divide-hairline-slate">
-          {savings.map((s) => (
+          {data.savings.length === 0 && (
+            <li className="py-8 text-center text-body-sm text-steel-slate">No savings opportunities right now</li>
+          )}
+          {data.savings.map((s) => (
             <li key={s.title} className="flex flex-wrap items-center gap-3 py-3">
               <Icon name="dollar" className="shrink-0 text-signal-green" size={16} />
               <span className="min-w-0 flex-1 text-body-sm text-ice-white">{s.title}</span>
-              <span className="font-mono text-caption text-signal-green">{s.annual}/yr</span>
-              <Chip tone="green">{s.impact}</Chip>
+              <span className="font-mono text-caption text-signal-green">{s.impact}</span>
+              <Chip tone={s.status === "Applied" ? "green" : "blue"}>{s.status}</Chip>
               <Button variant="secondary" size="sm" onClick={() => toast(`Applied: ${s.title}`)}>Apply</Button>
             </li>
           ))}
@@ -139,20 +141,17 @@ export function Cost() {
       </Card>
 
       <Card className="mt-6">
-        <CardHeader title="Cost Trend" subtitle="Monthly operational spend vs budget · -23% YoY" />
+        <CardHeader title="Cost Trend" subtitle={`Monthly operational spend vs budget · ${data.cost_reduction_pct}% YoY`} />
         <div className="pt-2">
-          <AreaChart
-            data={[
-              { label: "Feb", value: 458 },
-              { label: "Mar", value: 441 },
-              { label: "Apr", value: 430 },
-              { label: "May", value: 424 },
-              { label: "Jun", value: 418 },
-              { label: "Jul", value: 412 },
-            ]}
-            color="var(--color-signal-green)"
-            fill="var(--color-signal-green)"
-          />
+          {trend.length === 0 ? (
+            <p className="py-8 text-center text-body-sm text-steel-slate">No monthly trend data yet</p>
+          ) : (
+            <AreaChart
+              data={trend}
+              color="var(--color-signal-green)"
+              fill="var(--color-signal-green)"
+            />
+          )}
         </div>
       </Card>
 
@@ -170,18 +169,17 @@ export function Cost() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline-slate">
-                {[
-                  ["Carrier Services", "Maintenance", 34200, "+4%"],
-                  ["Bengaluru Power Co.", "Energy", 156560, "-4%"],
-                  ["ClearSight Security", "Security Ops", 38800, "+2%"],
-                  ["FacilityCare Janitorial", "Administrative", 41200, "+6%"],
-                  ["KONE", "Elevator PM", 18900, "0%"],
-                ].map(([vendor, cat, spend, delta]) => (
-                  <tr key={vendor} className="text-steel-slate">
-                    <td className="py-2.5 pr-4 text-ice-white">{vendor}</td>
-                    <td className="py-2.5 pr-4">{cat}</td>
-                    <td className="py-2.5 pr-4 font-mono text-caption">{fmtMoney(Number(spend))}</td>
-                    <td className="py-2.5"><span className="text-caption text-steel-slate">{delta}</span></td>
+                {data.vendor_spend.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-body-sm text-steel-slate">No vendor spend data</td>
+                  </tr>
+                )}
+                {data.vendor_spend.map((v) => (
+                  <tr key={v.name} className="text-steel-slate">
+                    <td className="py-2.5 pr-4 text-ice-white">{v.name}</td>
+                    <td className="py-2.5 pr-4">{v.category}</td>
+                    <td className="py-2.5 pr-4 font-mono text-caption">{fmtMoney(v.spend)}</td>
+                    <td className="py-2.5"><span className={`text-caption ${v.trend_pct > 0 ? "text-alert-red" : "text-signal-green"}`}>{v.trend_pct > 0 ? "+" : ""}{v.trend_pct}%</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -194,8 +192,8 @@ export function Cost() {
           <div className="grid grid-cols-3 gap-4 pt-2">
             {[
               { value: `${data.optimizations}`, label: "Optimizations" },
-              { value: "$96.4K", label: "Realized savings" },
-              { value: "6.2x", label: "Return multiple" },
+              { value: fmtMoney(data.realized_savings, true), label: "Realized savings" },
+              { value: `${data.roi_multiple}x`, label: "Return multiple" },
             ].map((s) => (
               <div key={s.label} className="rounded-card border border-hairline-slate bg-elevated-slate p-4 text-center">
                 <div className="font-kpi-value text-kpi-value text-signal-green">{s.value}</div>

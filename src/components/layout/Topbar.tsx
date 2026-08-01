@@ -5,8 +5,24 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icons";
 import { cn } from "@/components/ui/cn";
+import { useApiData } from "@/lib/api";
 
-const FACILITY = "Corporate HQ & IT Park";
+interface HealthPayload {
+  status: string;
+  facility: string;
+  sample_note?: string;
+  counts: Record<string, number>;
+}
+
+interface AlertSummary {
+  total: number;
+  open: number;
+  acknowledged: number;
+  resolved: number;
+}
+
+const EMPTY_HEALTH: HealthPayload = { status: "", facility: "", sample_note: "", counts: {} };
+const EMPTY_ALERTS: AlertSummary = { total: 0, open: 0, acknowledged: 0, resolved: 0 };
 
 function useClock() {
   const [now, setNow] = useState(() => new Date());
@@ -129,6 +145,10 @@ export function Topbar({
   const { signOut } = useClerk();
   const router = useRouter();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const health = useApiData<HealthPayload>("/api/health", EMPTY_HEALTH, 15000);
+  const alerts = useApiData<AlertSummary>("/api/alerts/summary", EMPTY_ALERTS, 15000);
+
+  const facilityName = health.data.facility || "Facility";
 
   const displayName = user
     ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim()
@@ -196,7 +216,7 @@ export function Topbar({
             <>
               <Icon name="building" size={18} />
               <span className="max-w-40 truncate font-body-sm text-body-sm font-medium text-ice-white">
-                {FACILITY}
+                {facilityName}
               </span>
               <Icon name="chevronDown" size={14} className={cn("transition-transform", open && "rotate-180")} />
             </>
@@ -207,7 +227,7 @@ export function Topbar({
               <p className="px-4 pb-1.5 pt-1 font-label-caps text-label-caps text-steel-slate/60 uppercase">
                 Facility
               </p>
-              <MenuItem icon="building" label={FACILITY} active onSelect={close} />
+              <MenuItem icon="building" label={facilityName} active onSelect={close} />
               <MenuItem icon="plus" label="Add facility" onSelect={close} />
             </>
           )}
@@ -220,19 +240,30 @@ export function Topbar({
           <span className="font-label-caps text-label-caps text-signal-green uppercase">Live</span>
         </div>
 
+        {health.data.sample_note && (
+          <span
+            title={health.data.sample_note}
+            className="hidden rounded-full border border-hairline-slate bg-panel-slate/70 px-2.5 py-1 font-label-caps text-label-caps text-steel-slate/80 uppercase md:inline-block"
+          >
+            Sample Data
+          </span>
+        )}
+
         <Clock />
 
         <div className="mx-1 hidden h-6 w-px bg-hairline-slate sm:block" aria-hidden="true" />
 
         <button
           type="button"
-          aria-label={`${4} unread alerts`}
+          aria-label={`${alerts.data.open} unread alerts`}
           className="relative rounded-control p-2 text-steel-slate hover:bg-hairline-slate/50 hover:text-ice-white"
         >
           <Icon name="bell" size={20} />
-          <span className="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-alert-red px-1 font-data-table text-[10px] font-semibold text-ice-white">
-            4
-          </span>
+          {alerts.data.open > 0 && (
+            <span className="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-alert-red px-1 font-data-table text-[10px] font-semibold text-ice-white">
+              {alerts.data.open}
+            </span>
+          )}
         </button>
 
         <button

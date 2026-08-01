@@ -16,7 +16,12 @@ import { fmtInt, fmtPct } from "@/lib/format";
 const EMPTY: OccupancyPayload = {
   facility: { name: "", facility_type: "", location: "" }, agent: "", occupancy_rate_pct: 0,
   active_visitors: 0, zones: [], forecast_bands: [], forecast_accuracy_pct: 0,
+  zone_timestamp: "", delta_vs_yesterday_pct: 0, today_total: 0, heatmap: [],
+  crowding_alerts: [], meeting_rooms: [], space_optimizations: [],
 };
+
+const deltaLabel = (pct: number, suffix: string) =>
+  `${pct <= 0 ? "▼" : "▲"} ${Math.abs(pct).toFixed(1)}% ${suffix}`;
 
 const utilColor = (pct: number) =>
   pct > 90 ? "var(--color-alert-red)" : pct >= 75 ? "var(--color-alert-amber)" : pct >= 60 ? "var(--color-primary)" : "var(--color-signal-green)";
@@ -24,7 +29,7 @@ const utilColor = (pct: number) =>
 const utilTone = (pct: number): Tone => (pct > 90 ? "red" : pct >= 75 ? "amber" : pct >= 60 ? "blue" : "green");
 
 export function Occupancy() {
-  const { data, loading, error, refresh } = useApiData<OccupancyPayload>("/api/dashboards/occupancy", EMPTY);
+  const { data, loading, error, refresh } = useApiData<OccupancyPayload>("/api/dashboards/occupancy", EMPTY, 15000);
   const { toast } = useToast();
 
   if (loading) {
@@ -53,17 +58,9 @@ export function Occupancy() {
   const totalCount = data.zones.reduce((s, z) => s + z.count, 0);
   const seatsPct = Math.round((totalCount / totalCapacity) * 100);
 
-  // Synthetic 24h heatmap from zone counts (density peaks at office hours).
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const hours = Array.from({ length: 12 }, (_, i) => i + 8);
-  const heatCells = days.flatMap((day, di) =>
-    hours.map((h) => {
-      const isWeekend = di >= 5;
-      const office = h >= 9 && h <= 18 && !isWeekend;
-      const value = data.zones[0] ? (office ? 0.35 + ((h - 8) / 11) * 0.55 : 0.08) : 0;
-      return { day, hour: h, value };
-    }),
-  );
+  const days = [...new Set(data.heatmap.map((c) => c.day))];
+  const hours = [...new Set(data.heatmap.map((c) => c.hour))].sort((a, b) => a - b);
+  const heatCells = data.heatmap.map((c) => ({ day: c.day, hour: c.hour, value: c.density }));
 
   return (
     <div>
@@ -75,22 +72,26 @@ export function Occupancy() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Occupancy Rate" value={fmtPct(data.occupancy_rate_pct)} icon="users" delta="▲ 5% vs yesterday" deltaTone="amber" sub="Near comfort ceiling" />
-        <KpiCard label="Active Visitors" value={fmtInt(data.active_visitors)} icon="activity" delta="▲ 18" deltaTone="green" sub="Currently on site" />
+        <KpiCard label="Occupancy Rate" value={fmtPct(data.occupancy_rate_pct)} icon="users" delta={deltaLabel(data.delta_vs_yesterday_pct, "vs yesterday")} deltaTone="amber" sub="Near comfort ceiling" />
+        <KpiCard label="Active Visitors" value={fmtInt(data.active_visitors)} icon="activity" delta="On site now" deltaTone="green" sub={`${fmtInt(data.today_total)} check-ins today`} />
         <KpiCard label="Seats Utilized" value={`${fmtInt(totalCount)} / ${fmtInt(totalCapacity)}`} icon="grid" delta={fmtPct(seatsPct)} deltaTone="steel" sub="Across all zones" />
-        <KpiCard label="Crowding Alerts" value="2" icon="alert" delta="Requires attention" deltaTone="amber" sub="Office 5 · Parking L1" />
+        <KpiCard label="Crowding Alerts" value={fmtInt(data.crowding_alerts.length)} icon="alert" delta={data.crowding_alerts.length ? "Requires attention" : "All clear"} deltaTone={data.crowding_alerts.length ? "amber" : "green"} sub={data.crowding_alerts.length ? data.crowding_alerts.map((c) => c.zone).join(" · ") : "No crowded zones right now"} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
         <Card>
           <CardHeader title="Building Density" subtitle="7-day occupancy heatmap (08:00–19:00)" />
-          <div className="overflow-x-auto pt-2">
-            <Heatmap cells={heatCells} days={days} hours={hours} />
-          </div>
+          {heatCells.length > 0 ? (
+            <div className="overflow-x-auto pt-2">
+              <Heatmap cells={heatCells} days={days} hours={hours} />
+            </div>
+          ) : (
+            <p className="py-8 text-center text-caption text-steel-slate">No heatmap data available yet.</p>
+          )}
         </Card>
 
         <Card>
-          <CardHeader title="Zone Occupancy" subtitle="Today · 15:00" />
+          <CardHeader title="Zone Occupancy" subtitle={`Today · ${data.zone_timestamp}`} />
           <div className="space-y-4 pt-2">
             {data.zones.map((z) => (
               <div key={z.zone} className="flex items-center gap-3 text-body-sm">
@@ -133,21 +134,22 @@ export function Occupancy() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline-slate">
-                {[
-                  ["Boardroom B", 12, 71, "Available"],
-                  ["Conf 3A", 8, 64, "Booked 14:00"],
-                  ["Focus Pod 1", 2, 52, "Available"],
-                  ["Training Room", 24, 58, "Booked 10:00"],
-                  ["Quiet Room 4", 4, 33, "Available"],
-                ].map(([room, cap, util, status]) => (
-                  <tr key={room as string} className="text-steel-slate">
-                    <td className="py-2.5 pr-4 text-ice-white">{room}</td>
-                    <td className="py-2.5 pr-4 font-mono text-caption">{cap}</td>
-                    <td className="py-2.5 pr-4 font-mono">{util}%</td>
-                    <td className="py-2.5"><Chip tone={(status as string).includes("Booked") ? "blue" : "green"}>{status}</Chip></td>
+                {data.meeting_rooms.map((r) => (
+                  <tr key={r.name} className="text-steel-slate">
+                    <td className="py-2.5 pr-4 text-ice-white">{r.name}</td>
+                    <td className="py-2.5 pr-4 font-mono text-caption">{r.capacity}</td>
+                    <td className="py-2.5 pr-4 font-mono">{r.utilization_pct}%</td>
+                    <td className="py-2.5"><Chip tone={r.status.toLowerCase().includes("booked") ? "blue" : "green"}>{r.status}</Chip></td>
                   </tr>
                 ))}
               </tbody>
+              {data.meeting_rooms.length === 0 && (
+                <tbody>
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-caption text-steel-slate">No meeting room data available.</td>
+                  </tr>
+                </tbody>
+              )}
             </table>
           </div>
         </Card>
@@ -155,21 +157,20 @@ export function Occupancy() {
         <Card>
           <CardHeader title="Space Optimization" subtitle="Occupancy Agent recommendations" />
           <ul role="list" className="divide-y divide-hairline-slate">
-            {[
-              { title: "Consolidate floors 4–5 to floor 3", impact: "$4.5k/mo", detail: "Free 22% space" },
-              { title: "Convert 3 underused desks to focus pods", impact: "1.5× usage", detail: "Desk 412–414" },
-              { title: "Pre-release Boardroom B if unbooked by 10:00", impact: "+6 bookings", detail: "Daily rule" },
-            ].map((r) => (
+            {data.space_optimizations.map((r) => (
               <li key={r.title} className="flex flex-wrap items-center gap-3 py-3">
                 <Icon name="users" className="shrink-0 text-primary" size={16} />
                 <div className="min-w-0 flex-1">
                   <p className="text-body-sm text-ice-white">{r.title}</p>
-                  <p className="text-caption text-steel-slate">{r.detail}</p>
+                  <p className="text-caption text-steel-slate">{r.status}</p>
                 </div>
                 <Chip tone="green">{r.impact}</Chip>
                 <Button variant="secondary" size="sm" onClick={() => toast(`Applied: ${r.title}`)}>Apply</Button>
               </li>
             ))}
+            {data.space_optimizations.length === 0 && (
+              <li className="py-4 text-caption text-steel-slate">No space optimization suggestions right now.</li>
+            )}
           </ul>
         </Card>
       </div>

@@ -12,12 +12,14 @@ import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
 import { useApiData, type EnergyPayload } from "@/lib/api";
-import { fmtMoney, fmtPct } from "@/lib/format";
+import { fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 
 const EMPTY: EnergyPayload = {
   facility: { name: "", facility_type: "", location: "" },
-  agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0,
-  carbon_reduction_pct: 0, split: { hvac: 45, lighting: 28, equipment: 18, other: 9 },
+  agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0, efficiency_target: 85,
+  carbon_reduction_pct: 0, hvac_efficiency_pct: 0, hvac_setpoint_c: 0, hvac_avg_temp_c: 0,
+  hvac_run_hours: 0, co2_saved_kg: 0, split: { hvac: 0, lighting: 0, equipment: 0, other: 0 },
+  wastage_insights: [], change_vs_prev_pct: 0, change_vs_baseline_pct: 0,
   anomalies: [], anomaly_count_today: 0, forecast: [], peak_day: null, hourly: [],
 };
 
@@ -28,8 +30,12 @@ const SPLIT_COLORS = {
   other: "var(--color-steel-slate)",
 };
 
+const deltaLabel = (pct: number, suffix: string) =>
+  `${pct <= 0 ? "▼" : "▲"} ${Math.abs(pct).toFixed(1)}% ${suffix}`;
+const deltaTone = (pct: number) => (pct <= 0 ? "green" : "red");
+
 export function Energy() {
-  const { data, loading, error, refresh } = useApiData<EnergyPayload>("/api/dashboards/energy", EMPTY);
+  const { data, loading, error, refresh } = useApiData<EnergyPayload>("/api/dashboards/energy", EMPTY, 15000);
   const { toast } = useToast();
 
   if (loading) {
@@ -81,17 +87,17 @@ export function Energy() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Total Energy" value={`${data.total_today_mwh.toFixed(2)} MWh`} icon="bolt" delta="▼ 4% vs yesterday" deltaTone="green" sub="1,280 kWh today" />
-        <KpiCard label="Cost Savings" value={fmtMoney(data.cost_savings)} icon="dollar" delta="▲ 12%" deltaTone="green" sub="This month to date" />
-        <KpiCard label="Efficiency Score" value={fmtPct(data.efficiency_score)} icon="gauge" delta="▲ 3 pts" deltaTone="green" sub={
+        <KpiCard label="Total Energy" value={`${data.total_today_mwh.toFixed(2)} MWh`} icon="bolt" delta={deltaLabel(data.change_vs_prev_pct, "vs yesterday")} deltaTone={deltaTone(data.change_vs_prev_pct)} sub={`${fmtInt(data.total_today_kwh)} kWh today`} />
+        <KpiCard label="Cost Savings" value={fmtMoney(data.cost_savings)} icon="dollar" delta={deltaLabel(data.change_vs_baseline_pct, "vs baseline")} deltaTone={deltaTone(data.change_vs_baseline_pct)} sub="This month to date" />
+        <KpiCard label="Efficiency Score" value={fmtPct(data.efficiency_score)} icon="gauge" sub={
           <span className="block">
-            Target {fmtPct(85)}
+            Target {fmtPct(data.efficiency_target)}
             <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-elevated-slate">
-              <span className="block h-full rounded-full bg-signal-green" style={{ width: `${(data.efficiency_score / 85) * 100}%` }} />
+              <span className="block h-full rounded-full bg-signal-green" style={{ width: `${Math.min(100, (data.efficiency_score / data.efficiency_target) * 100)}%` }} />
             </span>
           </span>
         } />
-        <KpiCard label="Carbon Reduction" value={fmtPct(data.carbon_reduction_pct)} icon="activity" delta="▲ 2%" deltaTone="green" sub="CO₂-eq 1.9 t saved" />
+        <KpiCard label="Carbon Reduction" value={fmtPct(data.carbon_reduction_pct)} icon="activity" sub={`CO₂-eq ${(data.co2_saved_kg / 1000).toFixed(1)} t saved`} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
@@ -125,19 +131,23 @@ export function Energy() {
         <Card>
           <CardHeader title="HVAC Efficiency" subtitle="Setpoint vs actual" />
           <div className="flex items-center gap-6 pt-2">
-            <Gauge value={78} label="HVAC efficiency" size={120} />
+            <Gauge value={data.hvac_efficiency_pct} label="HVAC efficiency" size={120} />
             <div className="flex-1">
               <div className="flex items-start gap-2 rounded-card border border-alert-amber/30 bg-alert-amber/10 p-3">
                 <Icon name="alert" className="mt-0.5 shrink-0 text-alert-amber" size={16} />
                 <p className="text-body-sm text-ice-white">
-                  AHU-4 running during unoccupied hours — potential savings{" "}
-                  <span className="font-mono text-signal-green">$212/mo</span>
+                  {data.wastage_insights[0]
+                    ? `${data.wastage_insights[0].title} — potential savings `
+                    : "No active wastage insights right now."}
+                  {data.wastage_insights[0] && (
+                    <span className="font-mono text-signal-green">{data.wastage_insights[0].impact}</span>
+                  )}
                 </p>
               </div>
               <div className="mt-3 space-y-2 text-body-sm text-steel-slate">
-                <div className="flex justify-between"><span>Setpoint</span><span className="font-mono text-ice-white">22.5°C</span></div>
-                <div className="flex justify-between"><span>Actual avg</span><span className="font-mono text-ice-white">23.8°C</span></div>
-                <div className="flex justify-between"><span>Run hours today</span><span className="font-mono text-ice-white">14.2 h</span></div>
+                <div className="flex justify-between"><span>Setpoint</span><span className="font-mono text-ice-white">{data.hvac_setpoint_c.toFixed(1)}°C</span></div>
+                <div className="flex justify-between"><span>Actual avg</span><span className="font-mono text-ice-white">{data.hvac_avg_temp_c.toFixed(1)}°C</span></div>
+                <div className="flex justify-between"><span>Run hours today</span><span className="font-mono text-ice-white">{data.hvac_run_hours.toFixed(1)} h</span></div>
               </div>
             </div>
           </div>
@@ -146,19 +156,18 @@ export function Energy() {
         <Card>
           <CardHeader title="Wastage Insights" subtitle="Energy Agent recommendations" />
           <ul role="list" className="divide-y divide-hairline-slate">
-            {[
-              { title: "Dim corridor lighting 23:00–06:00", impact: "$320/mo", tag: "Lighting" },
-              { title: "Schedule AHU-4 off during unoccupied window", impact: "$212/mo", tag: "HVAC" },
-              { title: "Shift heavy equipment load to off-peak", impact: "$180/mo", tag: "Equipment" },
-            ].map((w) => (
+            {data.wastage_insights.map((w) => (
               <li key={w.title} className="flex items-center gap-3 py-3">
                 <Icon name="bolt" className="shrink-0 text-primary" size={16} />
                 <span className="min-w-0 flex-1 text-body-sm text-ice-white">{w.title}</span>
-                <Chip tone="amber">{w.tag}</Chip>
+                <Chip tone="amber">{w.status}</Chip>
                 <span className="font-mono text-caption text-signal-green">{w.impact}</span>
                 <Button variant="secondary" size="sm" onClick={() => toast(`Applied: ${w.title}`)}>Apply</Button>
               </li>
             ))}
+            {data.wastage_insights.length === 0 && (
+              <li className="py-4 text-caption text-steel-slate">No wastage insights right now.</li>
+            )}
           </ul>
         </Card>
       </div>

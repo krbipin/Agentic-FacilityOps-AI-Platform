@@ -18,6 +18,9 @@ import { fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 
 const EMPTY: ReportsPayload = {
   facility: { name: "", facility_type: "", location: "" },
+  period: "",
+  generated_at: "",
+  data_through: "",
   narrative: "",
   kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 },
   spend_trend: { this_quarter: 0, budget: 0, prior_year: 0 },
@@ -25,16 +28,16 @@ const EMPTY: ReportsPayload = {
   sustainability: { carbon_reduction_pct: 0, renewables_pct: 0, co2_trend: [] },
   insights: [],
   agent_performance: [],
-  energy: { facility: { name: "", facility_type: "", location: "" }, agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0, carbon_reduction_pct: 0, split: { hvac: 45, lighting: 28, equipment: 18, other: 9 }, anomalies: [], anomaly_count_today: 0, forecast: [], peak_day: null, hourly: [] },
-  maintenance: { facility: { name: "", facility_type: "", location: "" }, agent: "", assets_monitored: 0, maintenance_tickets: 0, predicted_failures: 0, downtime_reduction_pct: 0, health_distribution: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 }, predicted: [] },
-  occupancy: { facility: { name: "", facility_type: "", location: "" }, agent: "", occupancy_rate_pct: 0, active_visitors: 0, zones: [], forecast_bands: [], forecast_accuracy_pct: 0 },
-  security: { facility: { name: "", facility_type: "", location: "" }, agent: "", events_today: 0, unauthorized_access: 0, active_visitors: 0, severity_counts: { Red: 0, Amber: 0, Blue: 0 }, doors: { controlled_doors: 0, monitored_zones: 0 }, burst_hours: [], events: [] },
-  cost: { facility: { name: "", facility_type: "", location: "" }, agent: "", total_spend: 0, total_budget: 0, cost_reduction_pct: 0, roi_generated: 0, optimizations: 0, distribution: {}, categories: [], facility_health: 0 },
-  intelligence: { facility: { name: "", facility_type: "", location: "" }, engine: "", facility_health: 0, agent_health: {}, kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 }, correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [], recommendations: [], optimizations: 0 },
+  energy: { facility: { name: "", facility_type: "", location: "" }, agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0, efficiency_target: 85, carbon_reduction_pct: 0, hvac_efficiency_pct: 0, hvac_setpoint_c: 0, hvac_avg_temp_c: 0, hvac_run_hours: 0, co2_saved_kg: 0, split: { hvac: 0, lighting: 0, equipment: 0, other: 0 }, wastage_insights: [], change_vs_prev_pct: 0, change_vs_baseline_pct: 0, anomalies: [], anomaly_count_today: 0, forecast: [], peak_day: null, hourly: [] },
+  maintenance: { facility: { name: "", facility_type: "", location: "" }, agent: "", assets_monitored: 0, maintenance_tickets: 0, predicted_failures: 0, downtime_reduction_pct: 0, health_distribution: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 }, predicted: [], spend_mtd: 0, cost_avoided: 0, mttr_hours: 0, asset_classes: 0, new_this_week: 0, backlog: 0, attention: 0, improved: false },
+  occupancy: { facility: { name: "", facility_type: "", location: "" }, agent: "", occupancy_rate_pct: 0, active_visitors: 0, zones: [], forecast_bands: [], forecast_accuracy_pct: 0, zone_timestamp: "", delta_vs_yesterday_pct: 0, crowding_alerts: [], heatmap: [], meeting_rooms: [], space_optimizations: [], today_total: 0 },
+  security: { facility: { name: "", facility_type: "", location: "" }, agent: "", events_today: 0, unauthorized_access: 0, active_visitors: 0, severity_counts: { Red: 0, Amber: 0, Blue: 0 }, doors: { controlled_doors: 0, monitored_zones: 0 }, burst_hours: [], events: [], camera_uptime_pct: 0, cctv_events: [], visitors: [], security_recommendations: [] },
+  cost: { facility: { name: "", facility_type: "", location: "" }, agent: "", total_spend: 0, total_budget: 0, cost_reduction_pct: 0, roi_generated: 0, optimizations: 0, distribution: {}, categories: [], facility_health: 0, savings: [], monthly_trend: [], vendor_spend: [], realized_savings: 0, roi_multiple: 0 },
+  intelligence: { facility: { name: "", facility_type: "", location: "" }, engine: "", facility_health: 0, agent_health: {}, kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 }, correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [], recommendations: [], optimizations: 0, roi_multiple: 0, explanation: "" },
 };
 
 export function Reports() {
-  const { data, loading, error, refresh } = useApiData<ReportsPayload>("/api/dashboards/reports", EMPTY);
+  const { data, loading, error, refresh } = useApiData<ReportsPayload>("/api/dashboards/reports", EMPTY, 15000);
   const { toast } = useToast();
   const [period, setPeriod] = useState<"Quarter" | "Year">("Quarter");
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -70,7 +73,7 @@ export function Reports() {
     <div>
       <PageIntro
         title="Executive Report"
-        subtitle={`Q3 · ${data.facility.name}`}
+        subtitle={`${data.period} · ${data.facility.name}`}
         agent="Facility Intelligence Engine"
         actions={
           <>
@@ -107,10 +110,10 @@ export function Reports() {
         </Card>
 
         <div className="grid grid-cols-2 gap-4">
-          <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta="▼ 23% QoQ" deltaTone="green" sub="Operational spend" />
-          <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta="▲ 6.2x" deltaTone="green" sub="AI optimization value" />
-          <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" delta="▲ 2 pts" deltaTone="steel" sub="All domains nominal" valueTone="violet" />
-          <KpiCard label="Optimizations" value={fmtInt(kpis.optimizations)} icon="sparkles" delta="+3 this week" deltaTone="green" sub="Applied live" />
+          <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta={`▼ ${fmtPct(kpis.cost_reduction_pct)} QoQ`} deltaTone="green" sub="Operational spend" />
+          <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta={`▲ ${data.cost.roi_multiple.toFixed(1)}x`} deltaTone="green" sub="AI optimization value" />
+          <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" sub="All domains nominal" valueTone="violet" />
+          <KpiCard label="Optimizations" value={fmtInt(kpis.optimizations)} icon="sparkles" sub="Applied live" />
         </div>
       </div>
 
@@ -210,7 +213,7 @@ export function Reports() {
       </Card>
 
       <p className="mt-6 text-caption text-steel-slate">
-        Prepared by FacilityOps AI · Generated 2026-07-31 · data through 2026-07-30
+        Prepared by FacilityOps AI · Generated {data.generated_at.slice(0, 10)} · data through {data.data_through.slice(0, 10)}
       </p>
 
       <Modal

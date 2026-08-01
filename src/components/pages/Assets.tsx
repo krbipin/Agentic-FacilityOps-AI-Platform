@@ -18,14 +18,15 @@ const EMPTY_STATUS: AssetStatusPayload = {
   facility: { name: "", facility_type: "", location: "" },
   total: 0, statuses: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 },
   distribution_pct: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 },
+  asset_types: [],
 };
 
 const statusTone: Record<string, Tone> = { Excellent: "green", Good: "blue", Warning: "amber", Critical: "red" };
-const TYPE_FILTERS = ["All", "HVAC", "Lighting", "Generators", "Elevators", "Access", "Pumps"];
 const PER_PAGE = 25;
 
 export function Assets() {
-  const status = useApiData<AssetStatusPayload>("/api/dashboards/assets", EMPTY_STATUS);
+  const status = useApiData<AssetStatusPayload>("/api/dashboards/assets", EMPTY_STATUS, 30000);
+  const typeOptions = ["All", ...status.data.asset_types];
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [type, setType] = useState("All");
@@ -40,22 +41,27 @@ export function Assets() {
 
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
-    if (search.trim()) params.set("search", search.trim());
-    if (type !== "All") params.set("asset_type", type);
-    if (statusFilter !== "All") params.set("status", statusFilter);
-    fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
-      .then((d) => {
-        if (!cancelled) {
-          setItems(d.items);
-          setTotal(d.total);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setItemsLoading(false);
-      });
+    const run = () => {
+      const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
+      if (search.trim()) params.set("search", search.trim());
+      if (type !== "All") params.set("asset_type", type);
+      if (statusFilter !== "All") params.set("status", statusFilter);
+      fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
+        .then((d) => {
+          if (!cancelled) {
+            setItems(d.items);
+            setTotal(d.total);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setItemsLoading(false);
+        });
+    };
+    run();
+    const id = window.setInterval(run, 30000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, [search, type, statusFilter, page]);
 
@@ -130,7 +136,7 @@ export function Assets() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_180px]">
           <TextField label="Search" placeholder="Name or ID…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
           <SelectField label="Type" value={type} onChange={(e) => { setType(e.target.value); setPage(0); }}>
-            {TYPE_FILTERS.map((t) => <option key={t}>{t}</option>)}
+            {typeOptions.map((t) => <option key={t}>{t}</option>)}
           </SelectField>
           <SelectField label="Status" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
             <option value="All">All</option>
@@ -243,18 +249,22 @@ export function Assets() {
               </ul>
             </div>
 
-            <div className="rounded-control border border-alert-amber/30 bg-alert-amber/5 p-4">
-              <p className="flex items-center gap-2 text-body-sm font-medium text-alert-amber">
-                <Icon name="alert" size={14} /> Predicted failure {detail.status === "Critical" ? "in ~2 days" : "in ~6 days"}
-              </p>
-              <p className="mt-1 font-mono text-caption text-steel-slate">confidence 92% · Maintenance Agent</p>
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={() => toast(`Work order drafted for ${detail.id}`, "success")}>
-                  <Icon name="clipboard" size={13} /> Schedule work order
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => toast("Prediction dismissed", "success")}>Dismiss</Button>
+            {detail.days_to_failure != null || detail.predicted_risk != null ? (
+              <div className="rounded-control border border-alert-amber/30 bg-alert-amber/5 p-4">
+                <p className="flex items-center gap-2 text-body-sm font-medium text-alert-amber">
+                  <Icon name="alert" size={14} /> Predicted failure {detail.days_to_failure != null ? `in ~${detail.days_to_failure} days` : "imminent"}
+                </p>
+                <p className="mt-1 font-mono text-caption text-steel-slate">confidence {detail.predicted_risk != null ? `${Math.round(detail.predicted_risk)}%` : "—"} · Maintenance Agent</p>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" onClick={() => toast(`Work order drafted for ${detail.id}`, "success")}>
+                    <Icon name="clipboard" size={13} /> Schedule work order
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => toast("Prediction dismissed", "success")}>Dismiss</Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="rounded-control border border-hairline-slate bg-elevated-slate p-4 text-caption text-steel-slate">No active failure prediction for this asset.</p>
+            )}
           </div>
         )}
       </Drawer>
@@ -273,10 +283,10 @@ export function Assets() {
         <div className="grid grid-cols-1 gap-4">
           <TextField label="Asset name" placeholder="AHU-9" />
           <SelectField label="Type" defaultValue="HVAC">
-            {TYPE_FILTERS.filter((t) => t !== "All").map((t) => <option key={t}>{t}</option>)}
+            {status.data.asset_types.map((t) => <option key={t}>{t}</option>)}
           </SelectField>
           <TextField label="Location" placeholder="Floor 3 Plant" />
-          <TextField label="Install date" defaultValue="2026-07-31" />
+          <TextField label="Install date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
           <TextField label="Manufacturer" placeholder="Carrier" />
         </div>
       </Modal>

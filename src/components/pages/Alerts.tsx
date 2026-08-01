@@ -17,6 +17,7 @@ const EMPTY: AlertsPayload = {
   facility: { name: "", facility_type: "", location: "" },
   summary: { total: 0, open: 0, acknowledged: 0, resolved: 0 },
   alerts: [],
+  escalation_policy: [],
 };
 
 const sevTone: Record<string, Tone> = { Critical: "red", Warning: "amber", Info: "blue" };
@@ -24,7 +25,7 @@ const statusTone: Record<string, Tone> = { Open: "red", Acknowledged: "amber", R
 const CHANNELS = ["Email", "SMS", "Teams", "Slack"];
 
 export function Alerts() {
-  const { data, loading, error, refresh } = useApiData<AlertsPayload>("/api/dashboards/alerts", EMPTY);
+  const { data, loading, error, refresh } = useApiData<AlertsPayload>("/api/dashboards/alerts", EMPTY, 15000);
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [sev, setSev] = useState("All");
@@ -221,7 +222,14 @@ export function Alerts() {
                 <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">{fmtTimeAgo(selected.created_at)}</span> — Alert created</li>
                 <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">+1 min</span> — Email to ops ({selected.channels.includes("Email") ? "sent" : "queued"})</li>
                 <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">+5 min</span> — SMS to on-call ({selected.channels.includes("SMS") ? "sent" : "not configured"})</li>
-                <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">+15 min</span> — Escalated to manager (Level 2) if unresolved</li>
+                {data.escalation_policy.length === 0 && (
+                  <li className="text-caption text-steel-slate">No escalation policy configured</li>
+                )}
+                {data.escalation_policy.map((e) => (
+                  <li key={e.level} className="text-caption text-steel-slate">
+                    <span className="font-mono text-ice-white">+{e.delay}</span> — {e.level} ({e.role}) via {e.channels.join(", ")}
+                  </li>
+                ))}
               </ol>
             </div>
             <p className="font-mono text-caption text-steel-slate">alert_id {selected.id} · created_at {selected.created_at}</p>
@@ -244,9 +252,13 @@ export function Alerts() {
       >
         <div className="space-y-4">
           <SelectField label="Escalation level" defaultValue="Level 1 — on-call">
-            <option>Level 1 — on-call</option>
-            <option>Level 2 — manager</option>
-            <option>Level 3 — director</option>
+            {data.escalation_policy.length === 0 ? (
+              <option>Level 1 — on-call</option>
+            ) : (
+              data.escalation_policy.map((e) => (
+                <option key={e.level}>{e.level} — {e.role}</option>
+              ))
+            )}
           </SelectField>
           <fieldset>
             <legend className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Notify via</legend>

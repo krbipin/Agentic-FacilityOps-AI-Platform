@@ -19,29 +19,36 @@ const EMPTY: OverviewPayload = {
   kpis: { energy_mwh: 0, cost_savings: 0, facility_health: 0, active_alerts: 0 },
   energy: {
     facility: { name: "", facility_type: "", location: "" },
-    agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0,
-    carbon_reduction_pct: 0, split: { hvac: 45, lighting: 28, equipment: 18, other: 9 },
+    agent: "", total_today_kwh: 0, total_today_mwh: 0, cost_savings: 0, efficiency_score: 0, efficiency_target: 85,
+    carbon_reduction_pct: 0, hvac_efficiency_pct: 0, hvac_setpoint_c: 0, hvac_avg_temp_c: 0,
+    hvac_run_hours: 0, co2_saved_kg: 0, split: { hvac: 0, lighting: 0, equipment: 0, other: 0 },
+    wastage_insights: [], change_vs_prev_pct: 0, change_vs_baseline_pct: 0,
     anomalies: [], anomaly_count_today: 0, forecast: [], peak_day: null, hourly: [],
   },
   maintenance: {
     facility: { name: "", facility_type: "", location: "" }, agent: "", assets_monitored: 0,
     maintenance_tickets: 0, predicted_failures: 0, downtime_reduction_pct: 0,
     health_distribution: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 }, predicted: [],
+    spend_mtd: 0, cost_avoided: 0, mttr_hours: 0, asset_classes: 0, new_this_week: 0,
+    backlog: 0, attention: 0, improved: false,
   },
   occupancy: {
     facility: { name: "", facility_type: "", location: "" }, agent: "", occupancy_rate_pct: 0,
     active_visitors: 0, zones: [], forecast_bands: [], forecast_accuracy_pct: 0,
+    zone_timestamp: "", delta_vs_yesterday_pct: 0, crowding_alerts: [], heatmap: [],
+    meeting_rooms: [], space_optimizations: [], today_total: 0,
   },
   security: {
     facility: { name: "", facility_type: "", location: "" }, agent: "", events_today: 0,
     unauthorized_access: 0, active_visitors: 0, severity_counts: { Red: 0, Amber: 0, Blue: 0 },
     doors: { controlled_doors: 0, monitored_zones: 0 }, burst_hours: [], events: [],
+    camera_uptime_pct: 0, cctv_events: [], visitors: [], security_recommendations: [],
   },
   intelligence: {
     facility: { name: "", facility_type: "", location: "" }, engine: "", facility_health: 0,
     agent_health: {}, kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 },
     correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [],
-    recommendations: [], optimizations: 0,
+    recommendations: [], optimizations: 0, roi_multiple: 0, explanation: "",
   },
   alerts: [],
 };
@@ -49,7 +56,7 @@ const EMPTY: OverviewPayload = {
 const sevTone: Record<string, Tone> = { Critical: "red", Warning: "amber", Info: "blue" };
 const zoneColors = ["var(--color-primary)", "var(--color-signal-green)", "var(--color-alert-amber)", "var(--color-violet)"];
 
-function HealthBanner({ health }: { health: number }) {
+function HealthBanner({ health, assets, costReduction, roi }: { health: number; assets: number; costReduction: number; roi: number }) {
   const status = health >= 85 ? "Healthy" : health >= 70 ? "Watch" : "At risk";
   return (
     <Card className="mb-6">
@@ -59,7 +66,6 @@ function HealthBanner({ health }: { health: number }) {
           <div className="flex items-center gap-2">
             <h2 className="text-body-md font-semibold text-ice-white">Facility Health</h2>
             <Chip tone={health >= 85 ? "green" : health >= 70 ? "amber" : "red"}>{status}</Chip>
-            <span className="text-caption text-signal-green">▲ 2 this week</span>
           </div>
           <p className="mt-2 text-body-sm text-steel-slate">
             All six agents reporting normal. No systemic risk detected across energy, assets,
@@ -68,17 +74,17 @@ function HealthBanner({ health }: { health: number }) {
         </div>
         <div className="hidden items-center gap-5 md:flex">
           <div className="text-right">
-            <div className="font-mono text-body-md text-ice-white">{fmtInt(2450)}</div>
+            <div className="font-mono text-body-md text-ice-white">{fmtInt(assets)}</div>
             <div className="text-caption text-steel-slate">Assets monitored</div>
           </div>
           <div className="h-8 w-px bg-hairline-slate" />
           <div className="text-right">
-            <div className="font-mono text-body-md text-signal-green">{fmtPct(23)}</div>
+            <div className="font-mono text-body-md text-signal-green">{fmtPct(costReduction)}</div>
             <div className="text-caption text-steel-slate">Cost reduced</div>
           </div>
           <div className="h-8 w-px bg-hairline-slate" />
           <div className="text-right">
-            <div className="font-mono text-body-md text-ice-white">{fmtMoney(1568000, true)}</div>
+            <div className="font-mono text-body-md text-ice-white">{fmtMoney(roi, true)}</div>
             <div className="text-caption text-steel-slate">ROI generated</div>
           </div>
         </div>
@@ -88,7 +94,7 @@ function HealthBanner({ health }: { health: number }) {
 }
 
 export function Overview() {
-  const { data, loading, error, refresh } = useApiData<OverviewPayload>("/api/dashboards/overview", EMPTY);
+  const { data, loading, error, refresh } = useApiData<OverviewPayload>("/api/dashboards/overview", EMPTY, 15000);
   const { toast } = useToast();
 
   if (loading) {
@@ -119,6 +125,8 @@ export function Overview() {
 
   const { kpis, energy, maintenance, occupancy, security, intelligence, alerts } = data;
   const hourly = energy.hourly.map((h) => ({ label: h.label, value: h.electricity_kwh }));
+  const split = `${energy.split.hvac}% · Lighting ${energy.split.lighting}% · Equipment ${energy.split.equipment}% · Other ${energy.split.other}%`;
+  const intelKpis = intelligence.kpis;
 
   return (
     <div>
@@ -133,20 +141,20 @@ export function Overview() {
         }
       />
 
-      <HealthBanner health={kpis.facility_health} />
+      <HealthBanner health={kpis.facility_health} assets={maintenance.assets_monitored} costReduction={intelKpis.cost_reduction_pct} roi={intelKpis.roi_generated} />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Total Energy" value={`${kpis.energy_mwh.toFixed(2)} MWh`} icon="bolt" delta="▲ 4%" deltaTone="green" sub={`▼ 4% vs baseline · ${fmtMoney(energy.cost_savings)} saved`} />
-        <KpiCard label="Assets Monitored" value={fmtInt(maintenance.assets_monitored)} icon="wrench" delta="▲ 12 failures predicted" deltaTone="amber" sub={`${maintenance.maintenance_tickets} open tickets`} />
-        <KpiCard label="Occupancy Rate" value={fmtPct(occupancy.occupancy_rate_pct)} icon="users" delta={`${fmtInt(occupancy.active_visitors)} visitors`} deltaTone="steel" sub="Forecast accuracy 84%" />
-        <KpiCard label="Security Events" value={fmtInt(security.events_today)} icon="shield" delta={`${fmtInt(security.unauthorized_access)} unauthorized`} deltaTone="red" sub="142 doors monitored" />
+        <KpiCard label="Total Energy" value={`${kpis.energy_mwh.toFixed(2)} MWh`} icon="bolt" delta={`${energy.change_vs_prev_pct >= 0 ? "▲" : "▼"} ${Math.abs(energy.change_vs_prev_pct)}%`} deltaTone={energy.change_vs_prev_pct >= 0 ? "red" : "green"} sub={`${energy.change_vs_baseline_pct >= 0 ? "▼" : "▲"} ${Math.abs(energy.change_vs_baseline_pct)}% vs baseline · ${fmtMoney(energy.cost_savings)} saved`} />
+        <KpiCard label="Assets Monitored" value={fmtInt(maintenance.assets_monitored)} icon="wrench" delta={`▲ ${maintenance.predicted_failures} failures predicted`} deltaTone="amber" sub={`${maintenance.maintenance_tickets} open tickets`} />
+        <KpiCard label="Occupancy Rate" value={fmtPct(occupancy.occupancy_rate_pct)} icon="users" delta={`${fmtInt(occupancy.active_visitors)} visitors`} deltaTone="steel" sub={`Forecast accuracy ${fmtPct(occupancy.forecast_accuracy_pct)}`} />
+        <KpiCard label="Security Events" value={fmtInt(security.events_today)} icon="shield" delta={`${fmtInt(security.unauthorized_access)} unauthorized`} deltaTone="red" sub={`${security.doors.controlled_doors} doors monitored`} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
         <Card>
           <CardHeader
             title="Energy Consumption — Last 24h"
-            subtitle="HVAC 45% · Lighting 28% · Equipment 18% · Other 9%"
+            subtitle={split}
           />
           <div className="pt-2">
             <AreaChart data={hourly} color="var(--color-primary)" highlight={(p) => p.value > 65} pointLabel={(p) => `${p.value} kWh`} />
@@ -176,7 +184,7 @@ export function Overview() {
         <CardHeader title="AI Recommendations" subtitle="Generated by the Facility Intelligence Engine" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {intelligence.recommendations.slice(0, 3).map((r, i) => (
-            <div key={r.title} className="flex flex-col justify-between rounded-card border border-hairline-slate bg-elevated-slate p-4">
+            <div key={r.id ?? r.title} className="flex flex-col justify-between rounded-card border border-hairline-slate bg-elevated-slate p-4">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-lg bg-panel-slate p-2 text-primary">
                   <Icon name={(["bolt", "wrench", "users", "shield", "dollar"] as IconName[])[i] ?? "sparkles"} size={16} />
@@ -194,7 +202,7 @@ export function Overview() {
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Zone Occupancy" subtitle="Today, 15:00" />
+          <CardHeader title="Zone Occupancy" subtitle={`Today, ${occupancy.zone_timestamp}`} />
           <div className="space-y-4 pt-2">
             {occupancy.zones.map((z, i) => (
               <div key={z.zone} className="flex items-center gap-3 text-body-sm">

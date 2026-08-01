@@ -50,8 +50,17 @@ export interface EnergyPayload {
   total_today_mwh: number;
   cost_savings: number;
   efficiency_score: number;
+  efficiency_target: number;
   carbon_reduction_pct: number;
+  hvac_efficiency_pct: number;
+  hvac_setpoint_c: number;
+  hvac_avg_temp_c: number;
+  hvac_run_hours: number;
+  co2_saved_kg: number;
   split: EnergySplit;
+  wastage_insights: WastageInsight[];
+  change_vs_prev_pct: number;
+  change_vs_baseline_pct: number;
   anomalies: EnergyAnomaly[];
   anomaly_count_today: number;
   forecast: EnergyForecastDay[];
@@ -78,6 +87,14 @@ export interface MaintenancePayload {
   downtime_reduction_pct: number;
   health_distribution: Record<"Excellent" | "Good" | "Warning" | "Critical", number>;
   predicted: PredictedFailure[];
+  spend_mtd: number;
+  cost_avoided: number;
+  mttr_hours: number;
+  asset_classes: number;
+  new_this_week: number;
+  backlog: number;
+  attention: number;
+  improved: boolean;
 }
 
 export interface OccupancyZone {
@@ -97,6 +114,13 @@ export interface OccupancyPayload {
   zones: OccupancyZone[];
   forecast_bands: { zone: string; date: string; low: number; high: number }[];
   forecast_accuracy_pct: number;
+  zone_timestamp: string;
+  delta_vs_yesterday_pct: number;
+  crowding_alerts: CrowdingAlert[];
+  heatmap: HeatmapCell[];
+  meeting_rooms: MeetingRoom[];
+  space_optimizations: RecommendationItem[];
+  today_total: number;
 }
 
 export interface SecurityEventItem {
@@ -119,6 +143,10 @@ export interface SecurityPayload {
   doors: { controlled_doors: number; monitored_zones: number };
   burst_hours: number[];
   events: SecurityEventItem[];
+  camera_uptime_pct: number;
+  cctv_events: SecurityEventItem[];
+  visitors: VisitorItem[];
+  security_recommendations: RecommendationItem[];
 }
 
 export interface CostCategory {
@@ -142,13 +170,70 @@ export interface CostPayload {
   distribution: Record<string, number>;
   categories: CostCategory[];
   facility_health: number;
+  savings: RecommendationItem[];
+  monthly_trend: MonthlyTrendPoint[];
+  vendor_spend: VendorSpend[];
+  realized_savings: number;
+  roi_multiple: number;
 }
 
 export interface RecommendationItem {
+  id?: number;
   agent: string;
   title: string;
   impact: string;
   status: string;
+}
+
+export interface WastageInsight {
+  title: string;
+  impact: string;
+  status: string;
+}
+
+export interface MeetingRoom {
+  name: string;
+  capacity: number;
+  utilization_pct: number;
+  status: string;
+  booked_at: string | null;
+}
+
+export interface CrowdingAlert {
+  zone: string;
+  level: string;
+}
+
+export interface HeatmapCell {
+  day: string;
+  hour: number;
+  density: number;
+}
+
+export interface VisitorItem {
+  name: string;
+  company: string;
+  purpose: string;
+  status: string;
+}
+
+export interface VendorSpend {
+  name: string;
+  category: string;
+  spend: number;
+  trend_pct: number;
+}
+
+export interface MonthlyTrendPoint {
+  month: string;
+  amount: number;
+}
+
+export interface EscalationLevel {
+  level: string;
+  role: string;
+  delay: string;
+  channels: string[];
 }
 
 export interface IntelligenceCorrelation {
@@ -195,6 +280,8 @@ export interface IntelligencePayload {
   forecasts: ForecastCard[];
   recommendations: RecommendationItem[];
   optimizations: number;
+  roi_multiple: number;
+  explanation: string;
 }
 
 export interface OverviewPayload {
@@ -227,10 +314,14 @@ export interface AlertsPayload {
     channels: string[];
     created_at: string;
   }[];
+  escalation_policy: EscalationLevel[];
 }
 
 export interface ReportsPayload {
   facility: FacilityInfo;
+  period: string;
+  generated_at: string;
+  data_through: string;
   narrative: string;
   kpis: { cost_reduction_pct: number; roi_generated: number; facility_health: number; optimizations: number };
   spend_trend: { this_quarter: number; budget: number; prior_year: number };
@@ -285,6 +376,8 @@ export interface AssetMaintenance {
 
 export interface AssetDetail extends AssetItem {
   maintenance_history: AssetMaintenance[];
+  days_to_failure: number | null;
+  predicted_risk: number | null;
 }
 
 export interface AssetStatusPayload {
@@ -292,6 +385,7 @@ export interface AssetStatusPayload {
   total: number;
   statuses: Record<"Excellent" | "Good" | "Warning" | "Critical", number>;
   distribution_pct: Record<"Excellent" | "Good" | "Warning" | "Critical", number>;
+  asset_types: string[];
 }
 
 export interface AgentStatus {
@@ -321,7 +415,7 @@ export interface CopilotAgentsPayload {
   correlations: { pair: string; r: number; computed_r: number }[];
 }
 
-export function useApiData<T>(path: string | null, fallback: T) {
+export function useApiData<T>(path: string | null, fallback: T, intervalMs?: number) {
   const [data, setData] = useState<T>(fallback);
   const [loading, setLoading] = useState<boolean>(!!path);
   const [error, setError] = useState<string | null>(null);
@@ -329,23 +423,28 @@ export function useApiData<T>(path: string | null, fallback: T) {
   useEffect(() => {
     if (!path) return;
     let cancelled = false;
-    fetcher<T>(path)
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Request failed");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const run = () => {
+      fetcher<T>(path)
+        .then((d) => {
+          if (!cancelled) {
+            setData(d);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : "Request failed");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    run();
+    const id = intervalMs ? window.setInterval(run, intervalMs) : undefined;
     return () => {
       cancelled = true;
+      if (id !== undefined) window.clearInterval(id);
     };
-  }, [path]);
+  }, [path, intervalMs]);
 
   const refresh = useCallback(() => {
     if (!path) return;

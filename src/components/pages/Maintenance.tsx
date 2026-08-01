@@ -16,6 +16,8 @@ const EMPTY: MaintenancePayload = {
   facility: { name: "", facility_type: "", location: "" }, agent: "", assets_monitored: 0,
   maintenance_tickets: 0, predicted_failures: 0, downtime_reduction_pct: 0,
   health_distribution: { Excellent: 0, Good: 0, Warning: 0, Critical: 0 }, predicted: [],
+  spend_mtd: 0, cost_avoided: 0, mttr_hours: 0, asset_classes: 0, new_this_week: 0,
+  backlog: 0, attention: 0, improved: false,
 };
 
 const statusTone: Record<string, Tone> = { Excellent: "green", Good: "blue", Warning: "amber", Critical: "red" };
@@ -29,8 +31,8 @@ const statusColor = {
 const prioTone: Record<string, Tone> = { P1: "red", P2: "amber", P3: "blue" };
 
 export function Maintenance() {
-  const { data, loading, error, refresh } = useApiData<MaintenancePayload>("/api/dashboards/maintenance", EMPTY);
-  const wo = useApiData<WorkOrderItem[]>("/api/work-orders?limit=6", []);
+  const { data, loading, error, refresh } = useApiData<MaintenancePayload>("/api/dashboards/maintenance", EMPTY, 15000);
+  const wo = useApiData<WorkOrderItem[]>("/api/work-orders?limit=6", [], 15000);
 
   if (loading) {
     return (
@@ -79,10 +81,10 @@ export function Maintenance() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Assets Monitored" value={fmtInt(data.assets_monitored)} icon="cpu" delta="▲ 24 added" deltaTone="steel" sub="Across 6 asset classes" />
-        <KpiCard label="Maintenance Tickets" value={fmtInt(data.maintenance_tickets)} icon="clipboard" delta="▲ 6" deltaTone="red" sub="Backlog rising" />
-        <KpiCard label="Predicted Failures" value={fmtInt(data.predicted_failures)} icon="alert" delta="▲ 2" deltaTone="amber" sub="Need attention" />
-        <KpiCard label="Downtime Reduction" value={`${data.downtime_reduction_pct}%`} icon="check" delta="▼ improved" deltaTone="green" sub="YoY comparison" />
+        <KpiCard label="Assets Monitored" value={fmtInt(data.assets_monitored)} icon="cpu" delta={`▲ ${data.new_this_week} added`} deltaTone="steel" sub={`Across ${data.asset_classes} asset classes`} />
+        <KpiCard label="Maintenance Tickets" value={fmtInt(data.maintenance_tickets)} icon="clipboard" delta={`▲ ${data.backlog}`} deltaTone="red" sub="Backlog in queue" />
+        <KpiCard label="Predicted Failures" value={fmtInt(data.predicted_failures)} icon="alert" delta={`▲ ${data.attention}`} deltaTone="amber" sub="Need attention" />
+        <KpiCard label="Downtime Reduction" value={`${data.downtime_reduction_pct}%`} icon="check" delta={data.improved ? "▼ improved" : "▲ declined"} deltaTone="green" sub="YoY comparison" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
@@ -176,15 +178,15 @@ export function Maintenance() {
           <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between rounded-card border border-hairline-slate bg-elevated-slate px-4 py-3">
               <span className="text-body-sm text-steel-slate">Spend MTD</span>
-              <span className="font-mono text-body-md text-ice-white">{fmtMoney(24500)}</span>
+              <span className="font-mono text-body-md text-ice-white">{fmtMoney(data.spend_mtd)}</span>
             </div>
             <div className="flex items-center justify-between rounded-card border border-signal-green/30 bg-signal-green/10 px-4 py-3">
               <span className="text-body-sm text-steel-slate">Cost avoided via prediction</span>
-              <span className="font-mono text-body-md text-signal-green">{fmtMoney(11200)}</span>
+              <span className="font-mono text-body-md text-signal-green">{fmtMoney(data.cost_avoided)}</span>
             </div>
             <div className="flex items-center justify-between rounded-card border border-hairline-slate bg-elevated-slate px-4 py-3">
               <span className="text-body-sm text-steel-slate">Average MTTR</span>
-              <span className="font-mono text-body-md text-ice-white">3.2 h</span>
+              <span className="font-mono text-body-md text-ice-white">{data.mttr_hours.toFixed(1)} h</span>
             </div>
           </div>
         </Card>
