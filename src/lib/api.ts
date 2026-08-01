@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 export async function fetcher<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`, { cache: "no-store" });
+  const res = await fetch(path, { cache: "no-store" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
@@ -363,7 +363,7 @@ export function useApiData<T>(path: string | null, fallback: T) {
 }
 
 export function patch<T>(path: string, body: unknown): Promise<T> {
-  return fetch(`/api${path}`, {
+  return fetch(path, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -374,7 +374,7 @@ export function patch<T>(path: string, body: unknown): Promise<T> {
 }
 
 export function post<T>(path: string, body: unknown): Promise<T> {
-  return fetch(`/api${path}`, {
+  return fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

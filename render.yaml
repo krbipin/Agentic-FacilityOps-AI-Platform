@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: facilityops-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: uv sync --frozen
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true

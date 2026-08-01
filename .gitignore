@@ -2,9 +2,20 @@
 opencode.json
 .env
 .env.*
+!.env.example
 *.local
 .stitch/designs/
 graphify-out/
+
+# Local tooling (keep on this machine only)
+/.agents/
+/.vscode/
+.idea/
+*.log
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.db
 
 # dependencies
 /node_modules
