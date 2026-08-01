@@ -17,6 +17,12 @@ graphify-out/
 .mypy_cache/
 *.db
 
+# Local-only project docs & specs (not shipped to GitHub)
+/.opencode/
+/.stitch/
+/UI-UX-Specs/
+/Agentic_FacilityOps_AI_Platform.xml
+
 # dependencies
 /node_modules
 /.pnp
