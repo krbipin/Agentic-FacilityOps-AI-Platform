@@ -264,14 +264,14 @@ export function Topbar({
             </>
           )}
         >
-          {(close) => (
+          {() => (
             <>
               <p className="px-4 pb-1.5 pt-1 font-label-caps text-label-caps text-steel-slate/60 uppercase">
                 {isLoaded ? displayName : "Account"}
               </p>
               <MenuItem icon="users" label="Profile" onSelect={() => router.push("/user")} />
-              <MenuItem icon="settings" label="Settings" onSelect={close} />
-              <MenuItem icon="fileText" label="My reports" onSelect={close} />
+              <MenuItem icon="settings" label="Settings" onSelect={() => router.push("/settings")} />
+              <MenuItem icon="fileText" label="My reports" onSelect={() => router.push("/reports")} />
               <div className="my-1.5 h-px bg-hairline-slate" aria-hidden="true" />
               <MenuItem icon="logout" label="Sign out" onSelect={handleSignOut} />
             </>
