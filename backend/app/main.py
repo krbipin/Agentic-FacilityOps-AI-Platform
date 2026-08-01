@@ -5,7 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 
 from .config import CORS_ORIGINS
+from .config_store import config_str, get_config
 from .db import SessionLocal, init_db
+from .live import advance
 from .models import (
     Alert,
     Asset,
@@ -59,9 +61,15 @@ include_routers(app)
 def health():
     session = SessionLocal()
     try:
+        from .routers import get_facility
+
+        if _count(session, Facility):
+            advance(session, get_facility(session))
         return {
             "status": "ok",
+            "version": app.version,
             "facility": session.query(Facility).first().name if _count(session, Facility) else None,
+            "sample_note": config_str(get_config(session), "app.sample_data_note", ""),
             "counts": {
                 "assets": _count(session, Asset),
                 "maintenance_records": _count(session, MaintenanceRecord),

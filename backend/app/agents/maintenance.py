@@ -1,25 +1,29 @@
 """Maintenance Agent: asset health monitoring + predictive failure risk.
 
 RandomForest scores failure risk per asset from health_score, useful_life_pct,
-days-since-maintenance and asset type. The top-risk asset (AHU-4) is anchored to
-the canonical 92% / 2-days figure; the model still decides *which* assets rank
-highest (the seeded dataset is engineered so AHU-4 leads).
+days-since-maintenance and asset type. Risk is normalized to 0-99 from the raw
+model output (no anchor). Downtime reduction is derived from work-order cycle
+comparisons.
 """
 from __future__ import annotations
+
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sqlalchemy.orm import Session
 
-from ..models import Asset, WorkOrder
+from ..cache import cached
+from ..config_store import config_float, get_config
+from ..models import Asset, MaintenanceRecord, WorkOrder
 from .base import SEED
 
-HEALTH_DIST = {"Excellent": 68, "Good": 22, "Warning": 8, "Critical": 2}
-TOP_RISK_ANCHOR = 92.0  # canonical AHU-4 risk %
 
+def _compute(session: Session, facility_id: int) -> dict:
+    cfg = get_config(session)
+    rate = config_float(cfg, "cost.hourly_rate", 160.0)
 
-def run(session: Session, facility_id: int) -> dict:
     rows = (
         session.query(
             Asset.id,
@@ -42,7 +46,7 @@ def run(session: Session, facility_id: int) -> dict:
                 "status": r.status,
                 "health_score": r.health_score,
                 "useful_life_pct": r.useful_life_pct,
-                "days_since": (pd.Timestamp.now() - pd.Timestamp(r.last_maintenance)).days,
+                "days_since": (datetime.utcnow().date() - (r.last_maintenance or datetime.utcnow().date())).days,
             }
             for r in rows
         ]
@@ -53,24 +57,13 @@ def run(session: Session, facility_id: int) -> dict:
     for t in types:
         X[f"type_{t}"] = (df["asset_type"] == t).astype(int)
 
-    y = 100.0 - df["health_score"]  # lower health -> higher failure signal
+    y = 100.0 - df["health_score"]
     model = RandomForestRegressor(n_estimators=120, max_depth=6, random_state=SEED, n_jobs=-1)
     model.fit(X, y)
-
-    # Raw risk score, then anchor AHU-4 (canonical top risk) to TOP_RISK_ANCHOR
-    # and cap every other asset below it so AHU-4 ranks first.
     raw = model.predict(X)
-    df["raw"] = raw
-    anchor_idx = df.index[df["id"] == "AST-1042"].tolist()
-    if anchor_idx and float(raw[anchor_idx[0]]) > 0:
-        k = TOP_RISK_ANCHOR / float(raw[anchor_idx[0]])
-        risk = raw * k
-        risk[anchor_idx[0]] = TOP_RISK_ANCHOR
-        risk = np.where(np.arange(len(df)) != anchor_idx[0], np.minimum(risk, TOP_RISK_ANCHOR - 1.0), risk)
-    else:
-        scale = TOP_RISK_ANCHOR / float(np.max(raw)) if float(np.max(raw)) > 0 else 1.0
-        risk = np.clip(raw * scale, 0.0, 99.0)
-    df["risk"] = np.round(np.clip(risk, 0.0, 99.0), 1)
+    peak = float(np.max(raw)) if len(raw) else 1.0
+    risk = np.clip(raw / (peak or 1.0) * 99.0, 0.0, 99.0)
+    df["risk"] = np.round(risk, 1)
     ranked = df.sort_values("risk", ascending=False)
 
     def days_to_failure(r) -> int:
@@ -80,33 +73,69 @@ def run(session: Session, facility_id: int) -> dict:
             return int(round(r["risk"] / 8)) or 4
         return int(round(r["risk"] / 3)) or 10
 
-    predicted = []
-    for _, r in ranked.head(12).iterrows():
-        predicted.append(
-            {
-                "asset_id": r["id"],
-                "name": r["name"],
-                "asset_type": r["asset_type"],
-                "risk": float(r["risk"]),
-                "status": r["status"],
-                "health_score": int(r["health_score"]),
-                "days_to_failure": days_to_failure(r),
-            }
-        )
+    predicted = [
+        {
+            "asset_id": r["id"],
+            "name": r["name"],
+            "asset_type": r["asset_type"],
+            "risk": float(r["risk"]),
+            "status": r["status"],
+            "health_score": int(r["health_score"]),
+            "days_to_failure": days_to_failure(r),
+        }
+        for _, r in ranked.head(12).iterrows()
+    ]
 
-    # Fleet health distribution (canonical 68/22/8/2).
     dist = {"Excellent": 0, "Good": 0, "Warning": 0, "Critical": 0}
     for status, count in df["status"].value_counts().items():
         dist[status] = int(round(count / len(df) * 100))
 
-    tickets = session.query(WorkOrder).count()
+    now = datetime.utcnow()
+    today = now.date()
+    week_ago = today - timedelta(days=7)
+    month_start = today.replace(day=1)
+
+    work_orders = session.query(WorkOrder).all()
+    spend_mtd = round(
+        sum(
+            r.cost or 0
+            for r in session.query(MaintenanceRecord.cost).filter(MaintenanceRecord.maintenance_date >= month_start).all()
+        )
+    )
+    ai_hours = [wo.estimated_hours or 0 for wo in work_orders if wo.source == "AI-predicted"]
+    cost_avoided = round(sum(ai_hours) * rate)
+
+    completed = [wo for wo in work_orders if wo.status == "Completed"]
+    open_wos = [wo for wo in work_orders if wo.status in ("Open", "Scheduled", "In Progress")]
+    avg_done = float(np.mean([wo.estimated_hours or 0 for wo in completed])) if completed else 0.0
+    avg_open = float(np.mean([wo.estimated_hours or 0 for wo in open_wos])) if open_wos else avg_done
+    downtime_reduction = round((avg_open - avg_done) / avg_open * 100) if avg_open else 0
+    improved = downtime_reduction >= 0
+
+    mttr_hours = round(avg_done, 1)
+    new_this_week = sum(1 for wo in work_orders if (wo.created_at or now).date() >= week_ago)
+    backlog = sum(1 for wo in work_orders if wo.status == "Open")
+    attention = sum(1 for a in df.itertuples(index=False) if a.status in ("Critical", "Warning"))
+    asset_classes = int(df["asset_type"].nunique())
 
     return {
         "agent": "Maintenance Agent",
         "assets_monitored": len(df),
-        "maintenance_tickets": int(tickets),
+        "maintenance_tickets": int(len(work_orders)),
         "predicted_failures": len(predicted),
-        "downtime_reduction_pct": 34,
+        "downtime_reduction_pct": int(downtime_reduction),
         "health_distribution": dist,
         "predicted": predicted,
+        "spend_mtd": spend_mtd,
+        "cost_avoided": cost_avoided,
+        "mttr_hours": mttr_hours,
+        "asset_classes": asset_classes,
+        "new_this_week": new_this_week,
+        "backlog": backlog,
+        "attention": attention,
+        "improved": bool(improved),
     }
+
+
+def run(session: Session, facility_id: int) -> dict:
+    return cached(f"maintenance:{facility_id}", 45.0, lambda: _compute(session, facility_id))

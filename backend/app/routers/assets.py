@@ -4,10 +4,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..agents import maintenance as maintenance_agent
 from ..db import get_db
 from ..models import Asset, MaintenanceRecord
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
+
+
+def _predictions(session: Session, facility_id: int) -> list[dict]:
+    return maintenance_agent.run(session, facility_id)["predicted"]
 
 
 def _serialize(asset: Asset) -> dict:
@@ -70,4 +75,10 @@ def get_asset(asset_id: str, session: Session = Depends(get_db)):
         }
         for m in history
     ]
+    pred = next(
+        (p for p in _predictions(session, asset.facility_id) if p["asset_id"] == asset.id),
+        None,
+    )
+    item["days_to_failure"] = pred["days_to_failure"] if pred else None
+    item["predicted_risk"] = pred["risk"] if pred else None
     return item

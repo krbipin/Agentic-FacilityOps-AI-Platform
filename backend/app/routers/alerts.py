@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..live import advance
 from ..models import Alert
 from . import get_facility
 
@@ -16,8 +17,28 @@ class AlertUpdate(BaseModel):
     status: str  # Open / Acknowledged / Resolved
 
 
+def advance_live(session: Session = Depends(get_db)):
+    advance(session, get_facility(session))
+    return session
+
+
+@router.get("/summary")
+def alert_summary(session: Session = Depends(get_db), _: Session = Depends(advance_live)):
+    fid = get_facility(session)
+    rows = session.query(Alert.status).filter(Alert.facility_id == fid).all()
+    counts = {"Open": 0, "Acknowledged": 0, "Resolved": 0}
+    for (status,) in rows:
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "total": len(rows),
+        "open": counts["Open"],
+        "acknowledged": counts["Acknowledged"],
+        "resolved": counts["Resolved"],
+    }
+
+
 @router.get("")
-def list_alerts(status: str | None = None, limit: int = 100, session: Session = Depends(get_db)):
+def list_alerts(status: str | None = None, limit: int = 100, session: Session = Depends(get_db), _: Session = Depends(advance_live)):
     fid = get_facility(session)
     q = session.query(Alert).filter(Alert.facility_id == fid)
     if status:

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config_store import config_float, get_config
 from ..db import get_db
 from ..models import Asset, WorkOrder
 
@@ -56,6 +57,13 @@ def list_work_orders(status: str | None = None, limit: int = 100, session: Sessi
     return out
 
 
+@router.get("/technicians")
+def list_technicians(session: Session = Depends(get_db)):
+    rows = session.query(WorkOrder.assignee).filter(WorkOrder.assignee.isnot(None)).distinct().all()
+    names = {r[0] for r in rows}
+    return {"technicians": sorted(names)}
+
+
 @router.get("/{wo_id}")
 def get_work_order(wo_id: str, session: Session = Depends(get_db)):
     wo = session.get(WorkOrder, wo_id)
@@ -73,13 +81,17 @@ def create_work_order(body: WorkOrderCreate, session: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Unknown asset_id")
     from datetime import date, datetime, timedelta
 
+    cfg = get_config(session)
+    default_days = int(config_float(cfg, "work_orders.default_due_days", 7.0))
+    default_hours = config_float(cfg, "work_orders.default_hours", 2.0)
+
     next_id = int(session.query(WorkOrder.id).order_by(WorkOrder.id.desc()).first()[0].split("-")[1]) + 1
     due = None
     if body.due_date:
         try:
             due = date.fromisoformat(body.due_date)
         except ValueError:
-            due = (datetime.now() + timedelta(days=7)).date()
+            due = (datetime.now() + timedelta(days=default_days)).date()
     wo = WorkOrder(
         id=f"WO-{next_id}",
         asset_id=body.asset_id,
@@ -89,7 +101,7 @@ def create_work_order(body: WorkOrderCreate, session: Session = Depends(get_db))
         source=body.source,
         status="Open",
         due_date=due,
-        estimated_hours=2.0,
+        estimated_hours=default_hours,
     )
     session.add(wo)
     session.commit()
