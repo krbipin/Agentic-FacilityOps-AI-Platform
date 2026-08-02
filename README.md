@@ -1,41 +1,151 @@
 # Agentic FacilityOps AI Platform
 
 **AI-Powered Building Operations & Facility Intelligence System**
-Autonomous AI Agents for Smart, Secure & Sustainable Facilities.
 
-This repo contains the complete UI/UX design system and per-page specs for a 14-page facility operations platform, plus the AI-agent tooling (skills + MCP servers) that powers the build.
+Autonomous AI agents for smart, secure & sustainable facilities — continuously monitoring energy, assets, occupancy, security, and operational cost, then surfacing live intelligence and recommendations on a centralized facility operations platform.
 
 ---
 
-## What's inside
+## Overview
 
-| Path | Purpose |
-|------|---------|
-| `Agentic_FacilityOps_AI_Platform.xml` | Original project specification (modules, agents, DB schema, milestones) |
-| `AGENTS.md` | Master reference for agents — read this first |
-| `.stitch/DESIGN.md` | Design system (source of truth for Stitch generation) |
-| `UI-UX-Specs/` | 14 prompt-specs, one per page — paste into Stitch to generate |
-| `.stitch/designs/` | Generated HTML + screenshots (output) |
-| `opencode.json` | opencode config: Stitch + Crawl4AI MCP servers, skills paths |
-| `.agents/skills/` | Installed community skills (agent-skills, skills.sh, ponytail) |
-| `.opencode/skills/` | Project-specific skills (stitch-design, facilityops-ui-spec) |
-| `graphify-out/` | graphify code knowledge graph (generated) |
+Large facilities (corporate offices, IT parks, universities, hospitals) generate huge operational data from IoT sensors, HVAC systems, access control, maintenance logs, occupancy monitoring, and utility meters. Facility managers struggle with rising energy costs, delayed maintenance, inefficient space utilization, security incidents, and operational inefficiencies.
+
+This platform deploys a suite of **autonomous AI agents** that continuously monitor operations, optimize resources, predict maintenance, improve security, and reduce operational cost. Agents collaborate through a central **Facility Intelligence Engine**, and the results are presented through real-time dashboards, alerts, and an AI copilot.
+
+### Key outcomes
+
+- AI-driven facility monitoring and automation
+- Predictive maintenance and asset health monitoring
+- Energy consumption optimization
+- Occupancy intelligence and space-utilization analytics
+- Real-time security monitoring and incident detection
+- Operational cost reduction via intelligent recommendations
+- Centralized facility operations dashboard
+- Automated alerts and escalation workflows
+- Sustainability / energy-efficiency reporting
+- Improved asset lifespan and facility performance
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────┐          ┌──────────────────────────────────────────┐
+│   Next.js 16 Frontend       │          │   FastAPI Backend                        │
+│   (14 pages, Clerk auth)    │          │                                          │
+│                             │  /api/*   │  ┌────────────────────────────────┐      │
+│  Dashboards ────────────────┼──────────►│  │ Routers (dashboards, agents,   │      │
+│  15s / 30s polling          │  proxy    │  │  alerts, work-orders, assets,   │      │
+│                             │  rewrite  │  │  settings, copilot)             │      │
+│  Topbar: Live clock,        │          │  └──────────────┬─────────────────┘      │
+│  alerts bell, sample badge  │          │                 │                        │
+│                             │          │  ┌──────────────▼─────────────────┐      │
+│  Next proxy                 │          │  │ Agent pipeline                 │      │
+│  (next.config.ts) ──────────┼─────────►│  │  Energy ──► Maintenance        │      │
+│  → BACKEND_URL              │          │  │  Occupancy ──► Security        │      │
+│                             │          │  │  Cost ──► Intelligence Engine  │      │
+└─────────────────────────────┘          │  │  (pandas + scikit-learn)       │      │
+                                         │  └──────────────┬─────────────────┘      │
+                                         │                 │ 45s agent cache         │
+                                         │  ┌──────────────▼─────────────────┐      │
+                                         │  │ Live Simulator (live.py)       │      │
+                                         │  │ 1-minute ticks, business-day   │      │
+                                         │  │ diurnal curves                 │      │
+                                         │  └──────────────┬─────────────────┘      │
+                                         └─────────────────┼────────────────────────┘
+                                                           │ SQLAlchemy / psycopg3
+                                             ┌─────────────▼─────────────┐
+                                             │ PostgreSQL (Neon, shared)  │
+                                             │ SQLite fallback (local)    │
+                                             └───────────────────────────┘
+```
+
+**Data workflow**
+
+1. Facility data — IoT sensors, HVAC systems, CCTV, access control, utility meters
+2. Data validation and processing
+3. Energy Agent → Maintenance Agent → Occupancy Agent → Security Agent → Cost Optimization Agent
+4. Facility Intelligence Engine (aggregates insights, correlates events, coordinates agents)
+5. Operational recommendations → Facility dashboards, alerts, notifications
+
+---
+
+## Core agents & modules
+
+| # | Module | Capabilities |
+|---|--------|--------------|
+| 1 | **Energy Agent** | Monitor electricity/water/utility consumption; detect energy wastage; analyze HVAC efficiency; optimize lighting schedules; energy-saving recommendations; forecast energy demand |
+| 2 | **Maintenance Agent** | Monitor equipment health; predict failures; detect abnormal behavior; track asset lifecycle; generate work orders; reduce downtime |
+| 3 | **Occupancy Agent** | Monitor room/building occupancy; space utilization; detect overcrowding; optimize workspace allocation; occupancy heatmaps; forecast usage |
+| 4 | **Security Agent** | Access control monitoring; detect unauthorized access; analyze CCTV events; track visitors; security alerts; incident investigation |
+| 5 | **Cost Optimization Agent** | Analyze operational expenditure; cost-saving opportunities; vendor optimization; resource allocation; budget compliance; ROI reports |
+| 6 | **Facility Analytics & Intelligence Engine** | Aggregate insights from all agents; facility health scores; anomaly detection; operational forecasts; AI recommendations |
+| 7 | **Dashboard & Reporting Module** | Facility Ops, Energy, Maintenance, Security, Occupancy, Executive dashboards |
+| 8 | **Alert & Automation Module** | Email alerts, SMS, Teams/Slack integration, automated escalations, maintenance ticket creation |
+
+---
+
+## Dashboards (14 pages)
+
+| # | Page | Route |
+|---|------|-------|
+| 1 | Sign-in / Sign-up (Clerk) | `/sign-in` · `/sign-up` |
+| 2 | Facility Operations Dashboard | `/` |
+| 3 | Energy Dashboard | `/energy` |
+| 4 | Maintenance Dashboard | `/maintenance` |
+| 5 | Occupancy Dashboard | `/occupancy` |
+| 6 | Security Dashboard | `/security` |
+| 7 | Cost Optimization Dashboard | `/cost` |
+| 8 | Facility Intelligence | `/intelligence` |
+| 9 | Alerts & Notifications Center | `/alerts` |
+| 10 | Executive Reporting Dashboard | `/reports` |
+| 11 | Assets Management | `/assets` |
+| 12 | Work Orders | `/work-orders` |
+| 13 | Settings & Integrations | `/settings` |
+| 14 | AI Copilot / Agent Collaboration | `/copilot` |
+
+Every page shares a global app shell — collapsible sidebar navigation, facility selector, live clock, active-alert bell with unread count, theme toggle (dark-first industrial aesthetic), and a Clerk user menu. All pages are fully responsive (mobile / tablet / desktop).
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 16.2.12, React 19.2.4, TypeScript 5, Tailwind CSS v4 |
+| Auth | Clerk (`@clerk/nextjs`), route guard via `src/proxy.ts` |
+| Backend | Python ≥3.14, FastAPI, Uvicorn, pandas 3, NumPy 2, scikit-learn |
+| ORM / DB | SQLAlchemy 2, psycopg3, PostgreSQL (Neon) · SQLite local fallback |
+| Tooling | uv (Python), npm (Node), Render (deploy) |
+
+Design system: Inter (UI) + JetBrains Mono (data), dark-first palette (`#0B1120` → `#111C33` → `#1E293B`), accents Electric Blue `#38BDF8`, Signal Green `#34D399`, Amber `#FBBF24`, Alert Red `#F87171`. Tokens live in `.stitch/DESIGN.md`.
+
+---
+
+## Live simulation & polling
+
+The platform is **live end-to-end**, not static screenshots:
+
+- **Sim clock** — `backend/app/live.py` advances a 1-minute tick of `EnergyUsage` / `OccupancyRecord` per real minute (capped catch-up), idempotent per `(facility_id, timestamp)`. Noon (12:00) rows are the daily-summary series and are excluded from minute aggregation.
+- **Weekend model** — a business-day diurnal curve runs every day (weekends included) so the demo stays lively.
+- **Agent cache** — each agent caches its payload for 45s; impact estimates for 120s. Cached reads are ~1–7s; cold full-mesh (overview/reports/intelligence) ~10–20s on Neon.
+- **Frontend polling** — dashboards + Topbar poll every 15s; Assets/WorkOrders/Copilot/Settings every 30s. The Topbar "Live" badge, 1s clock, and 15s alert bell are the liveness indicators.
 
 ---
 
 ## Data pipeline & sample dataset
 
-The live app is a full stack: **Next.js 14 frontend (14 pages) → FastAPI agents (`backend/app/agents/`) → PostgreSQL (Neon)**. The frontend polls the agents every 15–30s; agents run analytics, ML predictions, and a live 1-minute simulation.
+The app is a full stack: **Next.js frontend → FastAPI agents → PostgreSQL (Neon)**. The frontend polls the agents; agents run analytics, ML predictions, and the live 1-minute simulation.
 
-**Sample dataset.** `backend/app/seed.py` generates a deterministic synthetic 90-day history (`SEED=20260731`): 2,450 assets with maintenance records, minute-level energy + occupancy series, security events, 6-month cost reports, and 64 work orders. This represents an *established facility* so every dashboard is demonstrable out of the box.
+**Sample dataset.** `backend/app/seed.py` generates a deterministic synthetic history (`SEED=20260731`) for **Corporate HQ & IT Park, Bengaluru** — 2,450 assets with maintenance records, minute-level energy and occupancy series, security events, 6-month cost reports, and 64 work orders. This represents an established facility so every dashboard is demonstrable out of the box.
 
-**Data integrity.** No on-screen number is hardcoded. Every KPI (energy MWh, facility health, cost savings, ROI, occupancy, predicted failures, …) is computed live by the agents from this database. The Topbar shows a **"Sample Data"** badge to make the synthetic source explicit. Historical rows are deterministic and reproducible; the live simulation advances the clock 1 real minute at a time (`backend/app/live.py`, cached 45s per agent).
+**Data integrity.** No on-screen number is hardcoded. Every KPI — energy MWh, facility health, cost savings, ROI, occupancy, predicted failures — is computed live by the agents from this database. The Topbar renders a backend-driven **"Sample Data"** badge (`app.sample_data_note`, surfaced via `/api/health`) so the synthetic source is always labeled and never misrepresented as real telemetry. Historical rows are deterministic and reproducible; the simulation appends new minute rows live.
 
-**KPI derivation cheat-sheet** (full detail in each agent's docstring):
+**KPI derivation cheat-sheet** (full detail in each agent's docstring in `backend/app/agents/`):
 
 | KPI | How it's computed |
 |-----|-------------------|
-| Energy efficiency | `100 − \|today vs 7-day baseline\|` (%) on time-of-day–matched slices; savings/carbon from baseline delta × config tariff & emission factor |
+| Energy efficiency | `100 − |today vs 7-day baseline|` (%) on time-of-day–matched slices; savings/carbon from baseline delta × config tariff & emission factor |
 | Maintenance | RandomForest failure-risk 0–99 per asset (health, useful life, days since maintenance); downtime from work-order cycle comparisons |
 | Occupancy | Latest live per-zone snapshots; forecast = linear extrapolation of noon history + residual band; accuracy = model-vs-actual MAPE |
 | Security | Event counts/severities from `security_events`; doors & camera uptime from config; visitors from `visitors` table |
@@ -44,77 +154,174 @@ The live app is a full stack: **Next.js 14 frontend (14 pages) → FastAPI agent
 
 ---
 
-## The 14 pages
-
-| # | Page | Route | Spec |
-|---|------|-------|------|
-| 1 | Sign-in / Sign-up (Clerk default) | `/sign-in` `/sign-up` | `UI-UX-Specs/01-login.md` (superseded by Clerk's default page) |
-| 2 | Facility Operations Dashboard | `/` | `UI-UX-Specs/02-facility-operations-dashboard.md` |
-| 3 | Energy Dashboard | `/energy` | `UI-UX-Specs/03-energy-dashboard.md` |
-| 4 | Maintenance Dashboard | `/maintenance` | `UI-UX-Specs/04-maintenance-dashboard.md` |
-| 5 | Occupancy Dashboard | `/occupancy` | `UI-UX-Specs/05-occupancy-dashboard.md` |
-| 6 | Security Dashboard | `/security` | `UI-UX-Specs/06-security-dashboard.md` |
-| 7 | Cost Optimization Dashboard | `/cost` | `UI-UX-Specs/07-cost-optimization-dashboard.md` |
-| 8 | Facility Intelligence | `/intelligence` | `UI-UX-Specs/08-facility-intelligence.md` |
-| 9 | Alerts & Notifications Center | `/alerts` | `UI-UX-Specs/09-alerts-notifications-center.md` |
-| 10 | Executive Reporting Dashboard | `/reports` | `UI-UX-Specs/10-executive-reporting-dashboard.md` |
-| 11 | Assets Management | `/assets` | `UI-UX-Specs/11-assets-management.md` |
-| 12 | Work Orders | `/work-orders` | `UI-UX-Specs/12-work-orders.md` |
-| 13 | Settings & Integrations | `/settings` | `UI-UX-Specs/13-settings-integrations.md` |
-| 14 | AI Copilot / Agent Collaboration | `/copilot` | `UI-UX-Specs/14-ai-copilot-agent-collaboration.md` |
-
----
-
-## Stitch workflow (generate a page)
-
-1. Open [Stitch](https://stitch.withgoogle.com) and sign in.
-2. Create a project (or reuse `facilityops-ai`). Apply `.stitch/DESIGN.md` as the design system.
-3. Open any spec file from `UI-UX-Specs/`, copy the whole prompt, and paste it into Stitch chat.
-4. Generate as **DESKTOP** (each spec is desktop-first and fully responsive).
-5. Download the HTML + screenshot, or connect the Stitch MCP server to generate programmatically (below).
-
-### Auto-generate via MCP (opencode)
-1. Set the `STITCH_API_KEY` environment variable (create a key at stitch.withgoogle.com).
-2. Restart opencode.
-3. Ask: "Generate all 14 pages from UI-UX-Specs into the stitch project." The agent uses `create_project` → `create_design_system` → `generate_screen_from_text` per spec → downloads into `.stitch/designs/`.
-
----
-
-## Tooling setup
+## Getting started
 
 ### Prerequisites
+
 - Node.js 18+ (`node`, `npx`)
-- `uv` (Python tool manager) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Optional: Docker Desktop (preferred for Crawl4AI)
+- Python ≥3.14 and `uv` (Python tool manager) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- (Optional) A Neon PostgreSQL database; without it the backend falls back to SQLite
 
-### MCP servers (`opencode.json`)
-| Server | Type | Requires |
-|--------|------|----------|
-| `stitch` | remote (`https://stitch.googleapis.com/mcp`) | `STITCH_API_KEY` env var |
-| `crawl4ai` | local `uvx walksoda/crawl-mcp` | **disabled** until Docker installed or local build accepted |
+### 1. Backend
 
-Config loads once at startup — **restart opencode after changing `opencode.json` or env vars.**
-
-### Skills
-Installed to `.agents/skills/` (opencode scope):
 ```bash
-npx skills add addyosmani/agent-skills --skill frontend-ui-engineering --skill spec-driven-development --skill test-driven-development --skill incremental-implementation --skill code-review-and-quality --skill security-and-hardening --skill context-engineering --skill documentation-and-adrs -a opencode
-npx skills add vercel-labs/frontend-design vercel-labs/web-design-guidelines vercel-labs/tailwind-best-practices vercel-labs/vercel-react-best-practices -a opencode
-npx skills add DietrichGebert/ponytail -a opencode
+cd backend
+uv sync                       # install dependencies
+# create backend/.env with:
+#   DATABASE_URL=postgresql://user:pass@host/db   (Neon)
+# (unset → local SQLite at backend/data/facilityops.db)
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### graphify (code knowledge graph)
+The backend seeds the database automatically on first start (see "Data pipeline"). Health check:
+
 ```bash
-uv tool install graphifyy
-graphify extract .          # build the graph
-graphify query "..."        # ask questions against the code
+curl http://127.0.0.1:8000/api/health
+```
+
+> ⚠️ **Shared Neon database.** The backend runs on one shared Neon database for both local dev and production — local actions mutate production data. The Neon URL lives only in `backend/.env` (gitignored) and the Render service env var — never in committed code.
+
+### 2. Frontend
+
+```bash
+npm install
+cp .env.example .env.local    # add your Clerk keys (see below)
+npm run dev                   # http://localhost:3000
+```
+
+`next.config.ts` rewrites `/api/*` to `BACKEND_URL` (default `http://127.0.0.1:8000`).
+
+### Environment variables
+
+| Variable | Used by | Notes |
+|----------|---------|-------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Frontend | Clerk publishable key |
+| `CLERK_SECRET_KEY` | Frontend | Clerk secret key |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` / `SIGN_UP_URL` | Frontend | `/sign-in` · `/sign-up` |
+| `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL` | Frontend | `/` |
+| `NEXT_PUBLIC_CLERK_SIGN_OUT_REDIRECT_URL` | Frontend | `/` |
+| `BACKEND_URL` | Frontend proxy | Backend origin (default `http://127.0.0.1:8000`) |
+| `DATABASE_URL` | Backend | PostgreSQL (Neon) connection string |
+
+---
+
+## Database schema
+
+Canonical entities (16 tables via SQLAlchemy models):
+
+```
+FACILITIES 1:N → ASSETS, ENERGY_USAGE, OCCUPANCY_RECORDS, SECURITY_EVENTS, COST_REPORTS, ALERTS
+ASSETS     1:N → MAINTENANCE_RECORDS
+```
+
+| Entity | Key fields |
+|--------|------------|
+| `facilities` | name, facility_type, location, is_active |
+| `assets` | name, asset_type, location, status, health_score, useful_life_pct, next_due |
+| `maintenance_records` | issue_type, maintenance_date, cost, technician, status |
+| `energy_usage` | timestamp, electricity_kwh, water_l, hvac/lighting/equipment_kwh, is_forecast |
+| `occupancy_records` | zone, occupancy_count, capacity, timestamp |
+| `security_events` | event_type, severity, title, location, timestamp, status |
+| `cost_reports` | category, amount, budget, report_date |
+| `alerts` | alert_type, severity, title, message, agent, status, channels |
+| `work_orders` | title, issue_type, priority, source, status, assignee, due_date, confidence |
+| `recommendations` | agent, title, impact, status, date |
+| `meeting_rooms` · `visitors` · `vendors` | occupancy/security/cost side-panel data |
+| `system_config` | key/value editable infrastructure parameters (tariffs, targets, thresholds) |
+| `users` · `audit_log` | auth + audit trail |
+
+---
+
+## API reference
+
+Base URL: `http://127.0.0.1:8000` (or `https://facilityops-backend-izin.onrender.com`).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/health` | Service health, facility name, `sample_note`, row counts |
+| GET | `/api/dashboards/overview` | Facility Operations Dashboard |
+| GET | `/api/dashboards/energy` | Energy Dashboard |
+| GET | `/api/dashboards/maintenance` | Maintenance Dashboard |
+| GET | `/api/dashboards/occupancy` | Occupancy Dashboard |
+| GET | `/api/dashboards/security` | Security Dashboard |
+| GET | `/api/dashboards/cost` | Cost Optimization Dashboard |
+| GET | `/api/dashboards/intelligence` | Facility Intelligence |
+| GET | `/api/dashboards/reports` | Executive Reporting |
+| GET | `/api/dashboards/alerts` | Alerts payload |
+| GET | `/api/alerts` · `/api/alerts/summary` | Alerts list · status summary (`{total, open, acknowledged, resolved}`) |
+| PATCH | `/api/alerts/{alert_id}` | Update alert status |
+| GET | `/api/assets` · `/api/assets/{asset_id}` | Asset list · detail (incl. `days_to_failure`/`predicted_risk` for top-12 risk assets) |
+| GET | `/api/work-orders` · `/api/work-orders/technicians` | Work orders · technician roster |
+| PATCH | `/api/work-orders/{wo_id}` | Update work order |
+| GET | `/api/settings/config` · `/team` · `/integrations` · `/agents` · `/facility` | Settings & integrations |
+| GET | `/api/agents` · `/api/agents/{agent_id}/run` | List agents · run one agent |
+| GET | `/api/copilot/agents` | Agent collaboration payload |
+| POST | `/api/copilot/chat` | AI copilot chat |
+
+---
+
+## Deployment
+
+| Component | URL | Status |
+|-----------|-----|--------|
+| Backend (Render) | `https://facilityops-backend-izin.onrender.com` | **Live** ✓ |
+| Frontend (Vercel) | `https://facilityops-platform.vercel.app` | **Live** ✓ |
+
+- **Backend** deploys via `render.yaml` (Python, `uv sync --frozen` + `uvicorn app.main:app`, health check `/api/health`, auto-deploy on push). A scheduled cron pings `/api/health` to keep the free instance and Neon warm.
+- **Frontend** deploys from the GitHub repo on `master` (Next.js build, Clerk auth). Deployment protection is disabled so the production alias is publicly reachable; unauthenticated visits redirect through Clerk to `/sign-in`.
+- **Secrets rule:** `DATABASE_URL`, Clerk keys, and `BACKEND_URL` are never committed — they live in the platform env var dashboards only.
+
+---
+
+## Project structure
+
+```
+├── backend/                     # FastAPI backend
+│   ├── app/
+│   │   ├── agents/              # energy, maintenance, occupancy, security, cost, intelligence
+│   │   ├── routers/             # dashboards, agents, alerts, work-orders, assets, settings, copilot
+│   │   ├── cache.py             # per-agent response cache (45s)
+│   │   ├── config.py            # env + SQLite/PostgreSQL selection
+│   │   ├── config_store.py      # editable system config (tariffs, targets, sample note)
+│   │   ├── impact.py            # cached recommendation impact estimates (120s)
+│   │   ├── live.py              # live simulator (1-minute ticks)
+│   │   ├── main.py              # FastAPI app + /api/health
+│   │   ├── models.py            # SQLAlchemy models (16 tables)
+│   │   ├── seed.py              # deterministic synthetic dataset (SEED=20260731)
+│   │   ├── db.py                # engine/session, init_db
+│   │   └── ...
+│   ├── pyproject.toml           # uv project (FastAPI, pandas, scikit-learn, psycopg)
+│   └── reseed.py                # one-off drop → re-seed utility
+├── src/                         # Next.js frontend
+│   ├── app/                     # routes: (app)/…, sign-in, sign-up, user
+│   ├── components/
+│   │   ├── layout/              # app shell: Sidebar, Topbar
+│   │   └── pages/               # one component per dashboard
+│   └── lib/api.ts               # fetcher + useApiData polling hook + payload types
+├── render.yaml                  # Render backend blueprint
+├── next.config.ts               # /api/* proxy → BACKEND_URL
+├── UI-UX-Specs/                 # per-page design specs
+├── .stitch/DESIGN.md            # design system tokens
+└── AGENTS.md                    # master reference for agents
 ```
 
 ---
 
-## Conventions
+## Verification
 
-- Follow **ponytail**: write only what the task needs; never cut validation, security, or accessibility.
-- Spec before code; tests where feasible; small atomic commits.
-- Every page must work at **360px / 768px / 1280px+** and meet **WCAG 2.1 AA**.
-- Design tokens live in `.stitch/DESIGN.md` — never hardcode colors in specs.
+```bash
+# Backend
+curl http://127.0.0.1:8000/api/health          # → {"status":"ok","facility":…}
+
+# Frontend
+npx tsc --noEmit                                # type check
+npm run lint                                    # ESLint
+npm run build                                   # production build (14 routes)
+```
+
+---
+
+## Status
+
+- **Done:** full-stack live app (Next.js + FastAPI + Neon), 8 agents, 14 pages, Clerk auth, live simulation & polling, backend-driven KPIs with sample-data labeling, **production deployments on Render (backend) and Vercel (frontend)** with auto-deploy + backend warm-up cron.
+- **Planned:** email/SMS/Teams alert delivery, multi-facility support, mobile app.
