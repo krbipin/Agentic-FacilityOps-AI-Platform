@@ -23,3 +23,10 @@ def cached(key: str, ttl: float, fn: Callable[[], T]) -> T:
     value = fn()
     _store[key] = (now, value)
     return value
+
+
+def invalidate(prefix: str) -> None:
+    """Drop all cache entries whose key starts with prefix (used after data-entry POSTs)."""
+    for k in list(_store.keys()):
+        if k.startswith(prefix):
+            del _store[k]

@@ -52,6 +52,25 @@ def _compute(session: Session, facility_id: int) -> dict:
         ]
     )
 
+    if df.empty:
+        return {
+            "agent": "Maintenance Agent",
+            "assets_monitored": 0,
+            "maintenance_tickets": 0,
+            "predicted_failures": 0,
+            "downtime_reduction_pct": 0,
+            "health_distribution": {"Excellent": 0, "Good": 0, "Warning": 0, "Critical": 0},
+            "predicted": [],
+            "spend_mtd": 0,
+            "cost_avoided": 0,
+            "mttr_hours": 0.0,
+            "asset_classes": 0,
+            "new_this_week": 0,
+            "backlog": 0,
+            "attention": 0,
+            "improved": False,
+        }
+
     types = sorted(df["asset_type"].unique())
     X = pd.get_dummies(df[["health_score", "useful_life_pct", "days_since"]], columns=[])
     for t in types:
@@ -95,11 +114,15 @@ def _compute(session: Session, facility_id: int) -> dict:
     week_ago = today - timedelta(days=7)
     month_start = today.replace(day=1)
 
-    work_orders = session.query(WorkOrder).all()
+    asset_ids = session.query(Asset.id).filter(Asset.facility_id == facility_id)
+    work_orders = session.query(WorkOrder).filter(WorkOrder.asset_id.in_(asset_ids)).all()
     spend_mtd = round(
         sum(
             r.cost or 0
-            for r in session.query(MaintenanceRecord.cost).filter(MaintenanceRecord.maintenance_date >= month_start).all()
+            for r in session.query(MaintenanceRecord.cost)
+            .join(Asset, MaintenanceRecord.asset_id == Asset.id)
+            .filter(Asset.facility_id == facility_id, MaintenanceRecord.maintenance_date >= month_start)
+            .all()
         )
     )
     ai_hours = [wo.estimated_hours or 0 for wo in work_orders if wo.source == "AI-predicted"]

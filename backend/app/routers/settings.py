@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from ..config_store import config_float, get_config
 from ..db import get_db
 from ..models import Facility, SystemConfig, User
+from . import get_facility
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -86,7 +87,7 @@ def agent_thresholds(session: Session = Depends(get_db)):
 
 @router.get("/facility")
 def facility_settings(session: Session = Depends(get_db)):
-    f = session.query(Facility).first()
+    f = session.get(Facility, get_facility(session))
     return {
         "name": f.name if f else "Corporate HQ & IT Park",
         "facility_type": f.facility_type if f else "",

@@ -24,6 +24,8 @@ DEFAULTS: dict[str, float] = {
     "sustainability.renewables_pct": 32.0,
     "work_orders.default_due_days": 7.0,
     "work_orders.default_hours": 2.0,
+    "app.active_facility_id": 1.0,      # facility currently shown in the UI
+    "app.seeded_facility_id": 1.0,      # facility that owns the synthetic sample dataset
     "sim.tick_minutes": 1.0,
     "sim.catchup_cap_minutes": 1440.0,
 }

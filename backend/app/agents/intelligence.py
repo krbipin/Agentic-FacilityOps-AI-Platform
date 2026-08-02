@@ -44,16 +44,17 @@ def _correlation(session: Session, facility_id: int) -> float | None:
             .all()
         ]
     )
-    occupancy = pd.DataFrame(
+    occupancy_raw = pd.DataFrame(
         [
             {"date": r.timestamp.date(), "count": r.occupancy_count}
             for r in session.query(OccupancyRecord)
             .filter(OccupancyRecord.facility_id == facility_id, func.extract("hour", OccupancyRecord.timestamp) == 12)
             .all()
         ]
-    ).groupby("date", as_index=False)["count"].sum()
-    if energy.empty or occupancy.empty:
+    )
+    if energy.empty or occupancy_raw.empty:
         return None
+    occupancy = occupancy_raw.groupby("date", as_index=False)["count"].sum()
     joined = energy.merge(occupancy, on="date")
     if len(joined) < 5 or joined["kwh"].nunique() < 2 or joined["count"].nunique() < 2:
         return None
