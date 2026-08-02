@@ -31,7 +31,7 @@ in real time and refreshes every 15–30 seconds — nothing is hardcoded or a s
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, request lifecycle, agent collaboration (mermaid diagrams) |
 | [DB_SCHEMA.md](docs/DB_SCHEMA.md) | All 16 tables, columns, relationships (ER diagram), seed strategy |
 | [API.md](docs/API.md) | Every endpoint — paths, params, bodies, sample requests, errors |
-| [TECH STACK.md](docs/TECH STACK.md) | Exact versions, rationale, ML models, design tokens |
+| [TECH STACK.md](docs/TECH%20STACK.md) | Exact versions, rationale, ML models, design tokens |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Local dev, Render + Vercel setup, env vars, secrets, troubleshooting |
 | [WORKFLOW.md](docs/WORKFLOW.md) | Data flow, page → endpoint map, extend-guide, commit discipline |
 | [EDGE_CASES.md](docs/EDGE_CASES.md) | Known behaviors and gotchas (Clerk curl-404, noon rows, SQLite fallback, caching) |
@@ -102,4 +102,4 @@ only ever live in gitignored env files / platform dashboards.
 
 Next.js 16.2.12 · React 19.2.4 · TypeScript 5 · Tailwind CSS v4 · Clerk · FastAPI ·
 Python ≥3.14 · pandas 3 · NumPy 2 · scikit-learn · SQLAlchemy 2 · psycopg3 · PostgreSQL
-(Neon) · uv · Render · Vercel. See [TECH STACK.md](docs/TECH STACK.md).
+(Neon) · uv · Render · Vercel. See [TECH STACK.md](docs/TECH%20STACK.md).
