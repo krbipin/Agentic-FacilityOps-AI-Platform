@@ -9,7 +9,7 @@ import { Chip, type Tone } from "@/components/ui/Chip";
 import { Drawer } from "@/components/ui/Drawer";
 import { Icon } from "@/components/ui/icons";
 import { TextField, SelectField } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
+import { AssetModal } from "@/components/ui/AssetModal";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
 import { fetcher, useApiData, type AssetItem, type AssetDetail, type AssetStatusPayload } from "@/lib/api";
@@ -269,27 +269,14 @@ export function Assets() {
         )}
       </Drawer>
 
-      <Modal
+      <AssetModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Add Asset"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setAddOpen(false); toast("Asset added (demo)", "success"); refreshItems(); }}>Add asset</Button>
-          </>
-        }
-      >
-        <div className="grid grid-cols-1 gap-4">
-          <TextField label="Asset name" placeholder="AHU-9" />
-          <SelectField label="Type" defaultValue="HVAC">
-            {status.data.asset_types.map((t) => <option key={t}>{t}</option>)}
-          </SelectField>
-          <TextField label="Location" placeholder="Floor 3 Plant" />
-          <TextField label="Install date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
-          <TextField label="Manufacturer" placeholder="Carrier" />
-        </div>
-      </Modal>
+        onCreated={() => {
+          refreshItems();
+          status.refresh();
+        }}
+      />
     </div>
   );
 }

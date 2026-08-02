@@ -5,7 +5,9 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icons";
 import { cn } from "@/components/ui/cn";
-import { useApiData } from "@/lib/api";
+import { activateFacility, useApiData, type FacilityItem } from "@/lib/api";
+import { useToast } from "@/components/ui/Toast";
+import { FacilityModal } from "@/components/ui/FacilityModal";
 
 interface HealthPayload {
   status: string;
@@ -144,9 +146,13 @@ export function Topbar({
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
+  const { toast } = useToast();
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [facilityOpen, setFacilityOpen] = useState(false);
+  const [facilityBusy, setFacilityBusy] = useState<number | null>(null);
   const health = useApiData<HealthPayload>("/api/health", EMPTY_HEALTH, 15000);
   const alerts = useApiData<AlertSummary>("/api/alerts/summary", EMPTY_ALERTS, 15000);
+  const facilities = useApiData<{ items: FacilityItem[] }>("/api/facilities", { items: [] }, 30000);
 
   const facilityName = health.data.facility || "Facility";
 
@@ -190,6 +196,21 @@ export function Topbar({
     void signOut({ redirectUrl: "/" });
   };
 
+  const activate = async (id: number, close: () => void) => {
+    setFacilityBusy(id);
+    try {
+      const f = await activateFacility(id);
+      toast(`Active facility set to ${f.name}`, "success");
+      facilities.refresh();
+      health.refresh();
+    } catch {
+      toast("Failed to switch facility", "error");
+    } finally {
+      setFacilityBusy(null);
+      close();
+    }
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between gap-3 border-b border-hairline-slate bg-abyss-navy px-gutter">
       <div className="flex items-center gap-2">
@@ -227,8 +248,33 @@ export function Topbar({
               <p className="px-4 pb-1.5 pt-1 font-label-caps text-label-caps text-steel-slate/60 uppercase">
                 Facility
               </p>
-              <MenuItem icon="building" label={facilityName} active onSelect={close} />
-              <MenuItem icon="plus" label="Add facility" onSelect={close} />
+              {facilities.data.items.map((f) => {
+                const active = f.is_active;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    role="menuitem"
+                    disabled={active || facilityBusy === f.id}
+                    onClick={() => activate(f.id, close)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 px-4 py-2 font-body-sm text-body-sm transition-colors hover:bg-hairline-slate/50 disabled:opacity-60",
+                      active ? "text-primary" : "text-steel-slate",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <Icon name="building" size={16} className="shrink-0" />
+                      <span className="truncate">{f.name}</span>
+                    </span>
+                    {active && <Icon name="check" size={14} className="shrink-0 text-primary" />}
+                  </button>
+                );
+              })}
+              {facilities.data.items.length === 0 && (
+                <p className="px-4 py-2 font-caption text-caption text-steel-slate">No facilities yet</p>
+              )}
+              <div className="my-1.5 h-px bg-hairline-slate" aria-hidden="true" />
+              <MenuItem icon="plus" label="Add facility" onSelect={() => { close(); setFacilityOpen(true); }} />
             </>
           )}
         </Menu>
@@ -309,6 +355,15 @@ export function Topbar({
           )}
         </Menu>
       </div>
+
+      <FacilityModal
+        open={facilityOpen}
+        onClose={() => setFacilityOpen(false)}
+        onCreated={() => {
+          facilities.refresh();
+          health.refresh();
+        }}
+      />
     </header>
   );
 }

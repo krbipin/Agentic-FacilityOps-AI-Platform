@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { AreaChart } from "@/components/charts/AreaChart";
 import { Donut, DonutLegend } from "@/components/charts/Donut";
 import { Gauge } from "@/components/charts/Gauge";
@@ -11,6 +13,7 @@ import { KpiCard } from "@/components/ui/KpiCard";
 import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
+import { EnergyReadingModal } from "@/components/ui/EnergyReadingModal";
 import { useApiData, type EnergyPayload } from "@/lib/api";
 import { fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 
@@ -37,12 +40,13 @@ const deltaTone = (pct: number) => (pct <= 0 ? "green" : "red");
 export function Energy() {
   const { data, loading, error, refresh } = useApiData<EnergyPayload>("/api/dashboards/energy", EMPTY, 15000);
   const { toast } = useToast();
+  const [readingOpen, setReadingOpen] = useState(false);
 
   if (loading) {
     return (
       <div className="space-y-6" aria-busy="true">
         <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
         <Skeleton className="h-64" />
@@ -55,6 +59,7 @@ export function Energy() {
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <Icon name="alert" className="text-alert-red" size={32} />
         <p className="text-body-md font-semibold text-ice-white">Failed to load energy telemetry</p>
+        <p className="text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
         <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
     );
@@ -83,17 +88,24 @@ export function Energy() {
         title="Energy Intelligence"
         subtitle="Deep-dive into consumption, distribution and efficiency"
         agent={data.agent}
-        actions={<Button variant="secondary" size="sm" onClick={refresh}><Icon name="refresh" size={14} /> Refresh</Button>}
+        actions={
+          <>
+            <Button size="sm" onClick={() => setReadingOpen(true)}>
+              <Icon name="plus" size={14} /> Add reading
+            </Button>
+            <Button variant="secondary" size="sm" onClick={refresh}><Icon name="refresh" size={14} /> Refresh</Button>
+          </>
+        }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Total Energy" value={`${data.total_today_mwh.toFixed(2)} MWh`} icon="bolt" delta={deltaLabel(data.change_vs_prev_pct, "vs yesterday")} deltaTone={deltaTone(data.change_vs_prev_pct)} sub={`${fmtInt(data.total_today_kwh)} kWh today`} />
         <KpiCard label="Cost Savings" value={fmtMoney(data.cost_savings)} icon="dollar" delta={deltaLabel(data.change_vs_baseline_pct, "vs baseline")} deltaTone={deltaTone(data.change_vs_baseline_pct)} sub="This month to date" />
         <KpiCard label="Efficiency Score" value={fmtPct(data.efficiency_score)} icon="gauge" sub={
           <span className="block">
             Target {fmtPct(data.efficiency_target)}
             <span className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-elevated-slate">
-              <span className="block h-full rounded-full bg-signal-green" style={{ width: `${Math.min(100, (data.efficiency_score / data.efficiency_target) * 100)}%` }} />
+              <span className="block h-full rounded-full bg-signal-green" role="progressbar" aria-valuenow={data.efficiency_score} aria-valuemin={0} aria-valuemax={data.efficiency_target} style={{ width: `${Math.min(100, (data.efficiency_score / data.efficiency_target) * 100)}%` }} />
             </span>
           </span>
         } />
@@ -101,7 +113,7 @@ export function Energy() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Consumption vs Forecast" subtitle="Actual (24h) · dashed forecast (7d) · red markers = AI anomalies" />
           <div className="pt-2">
             <AreaChart
@@ -109,6 +121,8 @@ export function Energy() {
               secondary={{ data: forecast, color: "var(--color-violet)" }}
               highlight={(p) => data.anomalies.some((a) => Math.abs(a.electricity_kwh - p.value) < 0.6)}
               pointLabel={(p) => `${p.value} kWh`}
+              labelEvery={Math.max(1, Math.ceil(actual.length / 6))}
+              secondaryLabelEvery={0}
             />
           </div>
           <div className="mt-3 flex items-center gap-4 text-caption text-steel-slate">
@@ -118,19 +132,19 @@ export function Energy() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Energy Distribution" subtitle="Share of total consumption" />
           <div className="flex flex-col items-center gap-5 pt-2 sm:flex-row">
-            <Donut segments={donutSegments} centerValue={fmtPct(100)} centerLabel="Today" size={150} />
+            <Donut segments={donutSegments} centerValue={`${data.total_today_mwh.toFixed(2)}`} centerLabel="MWh today" size={150} />
             <div className="w-full flex-1"><DonutLegend items={legend} /></div>
           </div>
         </Card>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="HVAC Efficiency" subtitle="Setpoint vs actual" />
-          <div className="flex items-center gap-6 pt-2">
+          <div className="flex flex-wrap items-center gap-6 pt-2">
             <Gauge value={data.hvac_efficiency_pct} label="HVAC efficiency" size={120} />
             <div className="flex-1">
               <div className="flex items-start gap-2 rounded-card border border-alert-amber/30 bg-alert-amber/10 p-3">
@@ -153,11 +167,11 @@ export function Energy() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Wastage Insights" subtitle="Energy Agent recommendations" />
           <ul role="list" className="divide-y divide-hairline-slate">
             {data.wastage_insights.map((w) => (
-              <li key={w.title} className="flex items-center gap-3 py-3">
+              <li key={w.title} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
                 <Icon name="bolt" className="shrink-0 text-primary" size={16} />
                 <span className="min-w-0 flex-1 text-body-sm text-ice-white">{w.title}</span>
                 <Chip tone="amber">{w.status}</Chip>
@@ -172,17 +186,17 @@ export function Energy() {
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader title="Energy Usage — Last 24h" subtitle="Hourly telemetry" />
         <div className="-mx-4 overflow-x-auto px-4">
           <table className="w-full min-w-[640px] text-left text-body-sm">
             <thead>
               <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                <th className="py-2 pr-4 font-medium">Time</th>
-                <th className="py-2 pr-4 font-medium">Electricity (kWh)</th>
-                <th className="py-2 pr-4 font-medium">HVAC (kWh)</th>
-                <th className="py-2 pr-4 font-medium">Water (L)</th>
-                <th className="py-2 font-medium">Flag</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Time</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Electricity (kWh)</th>
+                <th scope="col" className="py-2 pr-4 font-medium">HVAC (kWh)</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Water (L)</th>
+                <th scope="col" className="py-2 font-medium">Anomaly</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline-slate">
@@ -202,6 +216,8 @@ export function Energy() {
           </table>
         </div>
       </Card>
+
+      <EnergyReadingModal open={readingOpen} onClose={() => setReadingOpen(false)} onCreated={refresh} />
     </div>
   );
 }

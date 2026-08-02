@@ -10,7 +10,8 @@ import { SelectField, TextField } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/misc";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
-import { useApiData, type IntelligencePayload, type SettingsIntegrationsPayload } from "@/lib/api";
+import { useApiData, activateFacility, type FacilityItem, type IntelligencePayload, type SettingsIntegrationsPayload } from "@/lib/api";
+import { FacilityModal } from "@/components/ui/FacilityModal";
 
 const SECTIONS = ["Notifications", "Agents", "Facilities", "Integrations", "Team & Roles", "Appearance", "Security", "API"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -56,9 +57,11 @@ const ROLES = ["Admin", "Facility Manager", "Technician", "Auditor", "Viewer"] a
 export function Settings() {
   const { toast } = useToast();
   const [section, setSection] = useState<Section>("Notifications");
+  const [facilityOpen, setFacilityOpen] = useState(false);
   const integrations = useApiData<SettingsIntegrationsPayload>("/api/settings/integrations", EMPTY_INTEGRATIONS, 30000);
   const team = useApiData<{ members: { name: string; email: string; role: string }[] }>("/api/settings/team", EMPTY_TEAM, 30000);
   const intelligence = useApiData<IntelligencePayload>("/api/dashboards/intelligence", EMPTY_INTELLIGENCE, 30000);
+  const facilities = useApiData<{ items: FacilityItem[] }>("/api/facilities", { items: [] }, 30000);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({ email: true, sms: true, teams: true, slack: false });
   const [agentOn, setAgentOn] = useState<Record<string, boolean>>({ energy: true, maintenance: true, occupancy: true, security: true, cost: true });
   const [sensitivity, setSensitivity] = useState<Record<string, string>>({ energy: "Normal", maintenance: "High", occupancy: "Normal", security: "High", cost: "Normal" });
@@ -71,6 +74,16 @@ export function Settings() {
 
   const toggle = (label: string) => (next: boolean) => {
     toast(`${label} ${next ? "enabled" : "disabled"}`, "success");
+  };
+
+  const activateFacilityInSettings = async (id: number) => {
+    try {
+      const f = await activateFacility(id);
+      toast(`Active facility set to ${f.name}`, "success");
+      facilities.refresh();
+    } catch {
+      toast("Failed to switch facility", "error");
+    }
   };
 
   const panel = (() => {
@@ -194,17 +207,38 @@ export function Settings() {
         return (
           <Card className="p-card-padding">
             <CardHeader title="Facilities" subtitle="Active facility" />
-            <div className="rounded-control border border-hairline-slate bg-elevated-slate p-4">
-              <p className="text-body-sm font-medium text-ice-white">Corporate HQ & IT Park</p>
-              <p className="text-caption text-steel-slate">Corporate HQ + IT Park · Bengaluru, India · Asia/Kolkata</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Chip tone="green">Active</Chip>
-                <Button size="sm" variant="secondary" onClick={() => toast("Facility settings saved", "success")}>Edit</Button>
-              </div>
-            </div>
-            <Button variant="secondary" size="sm" className="mt-4" onClick={() => toast("Add facility (demo)", "success")}>
+            <ul role="list" className="divide-y divide-hairline-slate">
+              {facilities.data.items.map((f) => {
+                const isActive = f.is_active;
+                return (
+                  <li key={f.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-body-sm font-medium text-ice-white">
+                        <span className="truncate">{f.name}</span>
+                        {isActive && <Chip tone="green">Active</Chip>}
+                      </p>
+                      <p className="text-caption text-steel-slate">{f.facility_type} · {f.location}</p>
+                    </div>
+                    {!isActive && (
+                      <Button size="sm" variant="secondary" onClick={() => activateFacilityInSettings(f.id)}>
+                        Set active
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+              {facilities.data.items.length === 0 && (
+                <li className="py-4 text-center text-caption text-steel-slate">No facilities yet</li>
+              )}
+            </ul>
+            <Button variant="secondary" size="sm" className="mt-4" onClick={() => setFacilityOpen(true)}>
               <Icon name="plus" size={14} /> Add facility
             </Button>
+            <FacilityModal
+              open={facilityOpen}
+              onClose={() => setFacilityOpen(false)}
+              onCreated={() => facilities.refresh()}
+            />
           </Card>
         );
 

@@ -16,6 +16,7 @@ interface AreaChartProps {
   pointLabel?: (p: AreaPoint) => string;
   highlight?: (p: AreaPoint) => boolean;
   labelEvery?: number;
+  secondaryLabelEvery?: number;
 }
 
 export function AreaChart({
@@ -29,6 +30,7 @@ export function AreaChart({
   pointLabel,
   highlight,
   labelEvery = 1,
+  secondaryLabelEvery = 1,
 }: AreaChartProps) {
   const width = 600;
   const padX = 4;
@@ -74,13 +76,13 @@ export function AreaChart({
       <path d={area} fill="url(#area-fill)" />
       <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
       {secLine && <path d={secLine} fill="none" stroke={secColor} strokeWidth={2} strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" />}
-      {sec.map((d, i) => (
-        <g key={`sec-${i}`}>
-          <text x={secX(i)} y={height - 5} textAnchor="middle" fontSize={10} fill="var(--color-violet)">
+      {sec.map((d, i) =>
+        i % secondaryLabelEvery === 0 ? (
+          <text key={`sec-${i}`} x={secX(i)} y={height - 5} textAnchor="middle" fontSize={10} fill="var(--color-violet)">
             {d.label}
           </text>
-        </g>
-      ))}
+        ) : null,
+      )}
       {data.map((d, i) => {
         const hl = highlight?.(d);
         const showLabel = i % labelEvery === 0;

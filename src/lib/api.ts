@@ -482,3 +482,63 @@ export function post<T>(path: string, body: unknown): Promise<T> {
     return res.json() as Promise<T>;
   });
 }
+
+export interface FacilityItem {
+  id: number;
+  name: string;
+  facility_type: string;
+  location: string;
+  is_active: boolean;
+}
+
+export interface CreateFacilityBody {
+  name: string;
+  facility_type: string;
+  location: string;
+}
+
+export interface CreateAssetBody {
+  name: string;
+  asset_type: string;
+  location: string;
+  status?: string;
+  health_score?: number;
+  manufacturer?: string;
+  useful_life_pct?: number;
+  install_date?: string;
+  last_maintenance?: string;
+  next_due?: string | null;
+}
+
+export interface CreateEnergyReadingBody {
+  electricity_kwh: number;
+  hvac_kwh?: number;
+  lighting_kwh?: number;
+  equipment_kwh?: number;
+  water_l?: number;
+  timestamp?: string;
+}
+
+export function fetchFacilities(): Promise<{ items: FacilityItem[] }> {
+  return fetcher<{ items: FacilityItem[] }>("/api/facilities");
+}
+
+export function createFacility(body: CreateFacilityBody): Promise<FacilityItem> {
+  return post<FacilityItem>("/api/facilities", body);
+}
+
+export function activateFacility(id: number): Promise<FacilityItem> {
+  return post<FacilityItem>(`/api/facilities/${id}/activate`, {});
+}
+
+export function createAsset(body: CreateAssetBody): Promise<AssetItem> {
+  return post<AssetItem>("/api/assets", body);
+}
+
+export function createEnergyReading(body: CreateEnergyReadingBody): Promise<{
+  id: number;
+  timestamp: string;
+  electricity_kwh: number;
+}> {
+  return post("/api/energy", body);
+}
