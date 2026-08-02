@@ -36,10 +36,18 @@ export function Occupancy() {
     return (
       <div className="space-y-6" aria-busy="true">
         <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
         <Skeleton className="h-64" />
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Skeleton className="h-56" />
+          <Skeleton className="h-56" />
+        </div>
       </div>
     );
   }
@@ -48,7 +56,10 @@ export function Occupancy() {
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <Icon name="alert" className="text-alert-red" size={32} />
-        <p className="text-body-md font-semibold text-ice-white">Failed to load occupancy telemetry</p>
+        <div>
+          <p className="text-body-md font-semibold text-ice-white">Failed to load occupancy telemetry</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
+        </div>
         <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
     );
@@ -56,11 +67,19 @@ export function Occupancy() {
 
   const totalCapacity = data.zones.reduce((s, z) => s + z.capacity, 0);
   const totalCount = data.zones.reduce((s, z) => s + z.count, 0);
-  const seatsPct = Math.round((totalCount / totalCapacity) * 100);
+  const seatsPct = totalCapacity ? Math.round((totalCount / totalCapacity) * 100) : 0;
 
   const days = [...new Set(data.heatmap.map((c) => c.day))];
   const hours = [...new Set(data.heatmap.map((c) => c.hour))].sort((a, b) => a - b);
   const heatCells = data.heatmap.map((c) => ({ day: c.day, hour: c.hour, value: c.density }));
+  const hourRange = hours.length ? `${hours[0]}:00–${hours[hours.length - 1]}:00` : null;
+  const peakForecast = data.zones.reduce((m, z) => Math.max(m, z.forecast_count), 0);
+  const crowdingSub = data.crowding_alerts.length
+    ? (() => {
+        const names = data.crowding_alerts.slice(0, 3).map((c) => c.zone).join(" · ");
+        return data.crowding_alerts.length > 3 ? `${names} +${data.crowding_alerts.length - 3} more` : names;
+      })()
+    : "No crowded zones right now";
 
   return (
     <div>
@@ -71,69 +90,93 @@ export function Occupancy() {
         actions={<Button variant="secondary" size="sm" onClick={refresh}><Icon name="refresh" size={14} /> Refresh</Button>}
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Occupancy Rate" value={fmtPct(data.occupancy_rate_pct)} icon="users" delta={deltaLabel(data.delta_vs_yesterday_pct, "vs yesterday")} deltaTone="amber" sub="Near comfort ceiling" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard label="Occupancy Rate" value={fmtPct(data.occupancy_rate_pct)} icon="users" delta={deltaLabel(data.delta_vs_yesterday_pct, "vs yesterday")} deltaTone={data.delta_vs_yesterday_pct > 0 ? "amber" : "green"} sub={`Across ${data.zones.length} zones`} />
         <KpiCard label="Active Visitors" value={fmtInt(data.active_visitors)} icon="activity" delta="On site now" deltaTone="green" sub={`${fmtInt(data.today_total)} check-ins today`} />
         <KpiCard label="Seats Utilized" value={`${fmtInt(totalCount)} / ${fmtInt(totalCapacity)}`} icon="grid" delta={fmtPct(seatsPct)} deltaTone="steel" sub="Across all zones" />
-        <KpiCard label="Crowding Alerts" value={fmtInt(data.crowding_alerts.length)} icon="alert" delta={data.crowding_alerts.length ? "Requires attention" : "All clear"} deltaTone={data.crowding_alerts.length ? "amber" : "green"} sub={data.crowding_alerts.length ? data.crowding_alerts.map((c) => c.zone).join(" · ") : "No crowded zones right now"} />
+        <KpiCard label="Crowding Alerts" value={fmtInt(data.crowding_alerts.length)} icon="alert" delta={data.crowding_alerts.length ? "Requires attention" : "All clear"} deltaTone={data.crowding_alerts.length ? "amber" : "green"} sub={crowdingSub} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
-        <Card>
-          <CardHeader title="Building Density" subtitle="7-day occupancy heatmap (08:00–19:00)" />
+        <Card className="p-card-padding">
+          <CardHeader title="Building Density" subtitle={`7-day occupancy heatmap${hourRange ? ` (${hourRange})` : ""}`} />
           {heatCells.length > 0 ? (
-            <div className="overflow-x-auto pt-2">
-              <Heatmap cells={heatCells} days={days} hours={hours} />
-            </div>
+            <>
+              <div className="overflow-x-auto pt-2">
+                <Heatmap cells={heatCells} days={days} hours={hours} />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-caption text-steel-slate">
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm bg-primary" /> Low</span>
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm bg-signal-green" /> Moderate</span>
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm bg-alert-amber" /> High</span>
+                <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm bg-alert-red" /> Crowded</span>
+              </div>
+            </>
           ) : (
-            <p className="py-8 text-center text-caption text-steel-slate">No heatmap data available yet.</p>
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="chart" className="text-steel-slate" size={28} />
+              <p className="text-body-sm text-ice-white">No heatmap data available yet</p>
+              <p className="text-caption text-steel-slate">The Occupancy Agent has not recorded zone readings for this facility.</p>
+            </div>
           )}
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Zone Occupancy" subtitle={`Today · ${data.zone_timestamp}`} />
           <div className="space-y-4 pt-2">
             {data.zones.map((z) => (
-              <div key={z.zone} className="flex items-center gap-3 text-body-sm">
-                <span className="w-32 shrink-0 truncate text-steel-slate">{z.zone}</span>
-                <div className="relative h-6 flex-1 overflow-hidden rounded-control bg-elevated-slate">
+              <div key={z.zone} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-body-sm sm:gap-x-3">
+                <span className="w-24 shrink-0 truncate text-steel-slate sm:w-32">{z.zone}</span>
+                <div className="relative h-6 min-w-[64px] flex-1 overflow-hidden rounded-control bg-elevated-slate">
                   <div className="h-full rounded-control" style={{ width: `${z.utilization_pct}%`, background: utilColor(z.utilization_pct) }} role="img" aria-label={`${z.zone} ${z.utilization_pct}%`} />
                 </div>
-                <span className="w-12 text-right font-mono text-caption text-ice-white">{Math.round(z.utilization_pct)}%</span>
-                <Chip tone={utilTone(z.utilization_pct)}>{z.count}/{z.capacity}</Chip>
+                <span className="w-10 shrink-0 text-right font-mono text-caption text-ice-white sm:w-12 sm:text-body-sm">{Math.round(z.utilization_pct)}%</span>
+                <Chip tone={utilTone(z.utilization_pct)} className="ml-auto sm:ml-0">{z.count}/{z.capacity}</Chip>
               </div>
             ))}
+            {data.zones.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <Icon name="grid" className="text-steel-slate" size={28} />
+                <p className="text-body-sm text-ice-white">No zone readings yet</p>
+                <p className="text-caption text-steel-slate">Zone utilization will appear once occupancy data is recorded.</p>
+              </div>
+            )}
           </div>
         </Card>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader title="Capacity Forecast" subtitle={`Next 7 days · forecast accuracy ${data.forecast_accuracy_pct}% · ± band`} />
+      <Card className="mt-6 p-card-padding">
+        <CardHeader title="Capacity Forecast" subtitle={`Per-zone forecast · ${fmtPct(data.forecast_accuracy_pct)} accuracy`} />
         <div className="pt-2">
           <AreaChart
             data={data.zones.map((z) => ({ label: z.zone.slice(0, 10), value: z.forecast_count }))}
             color="var(--color-signal-green)"
             fill="var(--color-signal-green)"
-            highlight={(p) => p.value === Math.max(...data.zones.map((z) => z.forecast_count))}
+            highlight={(p) => peakForecast > 0 && p.value === peakForecast}
             pointLabel={(p) => `${p.value}`}
           />
         </div>
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Meeting Room Utilization" subtitle="Today" />
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[480px] text-left text-body-sm">
               <thead>
                 <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                  <th className="py-2 pr-4 font-medium">Room</th>
-                  <th className="py-2 pr-4 font-medium">Capacity</th>
-                  <th className="py-2 pr-4 font-medium">Avg. utilization</th>
-                  <th className="py-2 font-medium">Status</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Room</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Capacity</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Avg. utilization</th>
+                  <th scope="col" className="py-2 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline-slate">
+                {data.meeting_rooms.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-10 text-center text-caption text-steel-slate">No meeting room data available.</td>
+                  </tr>
+                )}
                 {data.meeting_rooms.map((r) => (
                   <tr key={r.name} className="text-steel-slate">
                     <td className="py-2.5 pr-4 text-ice-white">{r.name}</td>
@@ -143,22 +186,22 @@ export function Occupancy() {
                   </tr>
                 ))}
               </tbody>
-              {data.meeting_rooms.length === 0 && (
-                <tbody>
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-caption text-steel-slate">No meeting room data available.</td>
-                  </tr>
-                </tbody>
-              )}
             </table>
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Space Optimization" subtitle="Occupancy Agent recommendations" />
           <ul role="list" className="divide-y divide-hairline-slate">
+            {data.space_optimizations.length === 0 && (
+              <li className="flex flex-col items-center gap-2 py-10 text-center">
+                <Icon name="check" className="text-signal-green" size={28} />
+                <p className="text-body-sm text-ice-white">No optimization suggestions right now</p>
+                <p className="text-caption text-steel-slate">The Occupancy Agent will recommend changes when it spots underused space.</p>
+              </li>
+            )}
             {data.space_optimizations.map((r) => (
-              <li key={r.title} className="flex flex-wrap items-center gap-3 py-3">
+              <li key={r.title} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
                 <Icon name="users" className="shrink-0 text-primary" size={16} />
                 <div className="min-w-0 flex-1">
                   <p className="text-body-sm text-ice-white">{r.title}</p>
@@ -168,9 +211,6 @@ export function Occupancy() {
                 <Button variant="secondary" size="sm" onClick={() => toast(`Applied: ${r.title}`)}>Apply</Button>
               </li>
             ))}
-            {data.space_optimizations.length === 0 && (
-              <li className="py-4 text-caption text-steel-slate">No space optimization suggestions right now.</li>
-            )}
           </ul>
         </Card>
       </div>
