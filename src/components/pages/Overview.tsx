@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AreaChart } from "@/components/charts/AreaChart";
 import { Bars } from "@/components/charts/Bars";
 import { Gauge } from "@/components/charts/Gauge";
@@ -55,35 +56,45 @@ const EMPTY: OverviewPayload = {
 
 const sevTone: Record<string, Tone> = { Critical: "red", Warning: "amber", Info: "blue" };
 const zoneColors = ["var(--color-primary)", "var(--color-signal-green)", "var(--color-alert-amber)", "var(--color-violet)"];
+const agentIcon: Record<string, IconName> = {
+  "Energy Agent": "bolt",
+  "Maintenance Agent": "wrench",
+  "Occupancy Agent": "users",
+  "Security Agent": "shield",
+  "Cost Optimization Agent": "dollar",
+};
 
-function HealthBanner({ health, assets, costReduction, roi }: { health: number; assets: number; costReduction: number; roi: number }) {
+function HealthBanner({ health, assets, costReduction, roi, openAlerts }: { health: number; assets: number; costReduction: number; roi: number; openAlerts: number }) {
   const status = health >= 85 ? "Healthy" : health >= 70 ? "Watch" : "At risk";
+  const description =
+    health >= 85
+      ? "All agents reporting within normal thresholds. No systemic risk detected across energy, assets, occupancy, security, or cost domains."
+      : health >= 70
+        ? `Mixed signals across agents. ${openAlerts} open alerts — review flagged domains below.`
+        : `Critical thresholds breached in one or more domains. ${openAlerts} open alerts require immediate review.`;
   return (
-    <Card className="mb-6">
-      <div className="flex flex-wrap items-center gap-6">
+    <Card className="mb-6 p-card-padding">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <Gauge value={health} label="Health Score" size={132} />
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2">
+        <div className="min-w-[200px] flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-body-md font-semibold text-ice-white">Facility Health</h2>
             <Chip tone={health >= 85 ? "green" : health >= 70 ? "amber" : "red"}>{status}</Chip>
           </div>
-          <p className="mt-2 text-body-sm text-steel-slate">
-            All six agents reporting normal. No systemic risk detected across energy, assets,
-            occupancy, security, or cost domains.
-          </p>
+          <p className="mt-2 text-body-sm text-steel-slate">{description}</p>
         </div>
-        <div className="hidden items-center gap-5 md:flex">
-          <div className="text-right">
+        <div className="flex w-full flex-wrap items-center gap-x-6 gap-y-3 border-t border-hairline-slate pt-4 md:w-auto md:border-t-0 md:pt-0">
+          <div>
             <div className="font-mono text-body-md text-ice-white">{fmtInt(assets)}</div>
             <div className="text-caption text-steel-slate">Assets monitored</div>
           </div>
-          <div className="h-8 w-px bg-hairline-slate" />
-          <div className="text-right">
+          <div className="hidden h-8 w-px bg-hairline-slate md:block" />
+          <div>
             <div className="font-mono text-body-md text-signal-green">{fmtPct(costReduction)}</div>
             <div className="text-caption text-steel-slate">Cost reduced</div>
           </div>
-          <div className="h-8 w-px bg-hairline-slate" />
-          <div className="text-right">
+          <div className="hidden h-8 w-px bg-hairline-slate md:block" />
+          <div>
             <div className="font-mono text-body-md text-ice-white">{fmtMoney(roi, true)}</div>
             <div className="text-caption text-steel-slate">ROI generated</div>
           </div>
@@ -102,7 +113,7 @@ export function Overview() {
       <div className="space-y-6" aria-busy="true" aria-label="Loading dashboard">
         <Skeleton className="h-9 w-64" />
         <Skeleton className="h-36" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
         <Skeleton className="h-64" />
@@ -116,7 +127,7 @@ export function Overview() {
         <Icon name="alert" className="text-alert-red" size={32} />
         <div>
           <p className="text-body-md font-semibold text-ice-white">Failed to load telemetry</p>
-          <p className="mt-1 text-body-sm text-steel-slate">{error} — is the backend running on :8000?</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
         </div>
         <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
@@ -141,9 +152,9 @@ export function Overview() {
         }
       />
 
-      <HealthBanner health={kpis.facility_health} assets={maintenance.assets_monitored} costReduction={intelKpis.cost_reduction_pct} roi={intelKpis.roi_generated} />
+      <HealthBanner health={kpis.facility_health} assets={maintenance.assets_monitored} costReduction={intelKpis.cost_reduction_pct} roi={intelKpis.roi_generated} openAlerts={alerts.length} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Total Energy" value={`${kpis.energy_mwh.toFixed(2)} MWh`} icon="bolt" delta={`${energy.change_vs_prev_pct >= 0 ? "▲" : "▼"} ${Math.abs(energy.change_vs_prev_pct)}%`} deltaTone={energy.change_vs_prev_pct >= 0 ? "red" : "green"} sub={`${energy.change_vs_baseline_pct >= 0 ? "▼" : "▲"} ${Math.abs(energy.change_vs_baseline_pct)}% vs baseline · ${fmtMoney(energy.cost_savings)} saved`} />
         <KpiCard label="Assets Monitored" value={fmtInt(maintenance.assets_monitored)} icon="wrench" delta={`▲ ${maintenance.predicted_failures} failures predicted`} deltaTone="amber" sub={`${maintenance.maintenance_tickets} open tickets`} />
         <KpiCard label="Occupancy Rate" value={fmtPct(occupancy.occupancy_rate_pct)} icon="users" delta={`${fmtInt(occupancy.active_visitors)} visitors`} deltaTone="steel" sub={`Forecast accuracy ${fmtPct(occupancy.forecast_accuracy_pct)}`} />
@@ -151,22 +162,28 @@ export function Overview() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[3fr_2fr]">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader
             title="Energy Consumption — Last 24h"
             subtitle={split}
           />
           <div className="pt-2">
-            <AreaChart data={hourly} color="var(--color-primary)" highlight={(p) => p.value > 65} pointLabel={(p) => `${p.value} kWh`} />
+            <AreaChart data={hourly} color="var(--color-primary)" highlight={(p) => p.value > 65} pointLabel={(p) => `${p.value} kWh`} labelEvery={Math.max(1, Math.ceil(hourly.length / 6))} />
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Active Alerts" subtitle={`${alerts.length} open`} right={
-            <a href="/alerts" className="text-caption font-medium text-primary hover:underline">View all →</a>
+            <Link href="/alerts" className="text-caption font-medium text-primary hover:underline">View all →</Link>
           } />
           <ul role="list" className="divide-y divide-hairline-slate">
-            {alerts.length === 0 && <li className="py-8 text-center text-body-sm text-steel-slate">All clear</li>}
+            {alerts.length === 0 && (
+              <li className="flex flex-col items-center gap-2 py-10 text-center">
+                <Icon name="check" className="text-signal-green" size={28} />
+                <p className="text-body-sm text-ice-white">All clear</p>
+                <p className="text-caption text-steel-slate">No active alerts right now</p>
+              </li>
+            )}
             {alerts.slice(0, 5).map((a) => (
               <li key={a.id} className="flex items-start gap-3 py-3">
                 <Chip tone={sevTone[a.severity] ?? "steel"}>{a.severity}</Chip>
@@ -180,14 +197,14 @@ export function Overview() {
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader title="AI Recommendations" subtitle="Generated by the Facility Intelligence Engine" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {intelligence.recommendations.slice(0, 3).map((r, i) => (
+          {intelligence.recommendations.slice(0, 3).map((r) => (
             <div key={r.id ?? r.title} className="flex flex-col justify-between rounded-card border border-hairline-slate bg-elevated-slate p-4">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 rounded-lg bg-panel-slate p-2 text-primary">
-                  <Icon name={(["bolt", "wrench", "users", "shield", "dollar"] as IconName[])[i] ?? "sparkles"} size={16} />
+                  <Icon name={agentIcon[r.agent] ?? "sparkles"} size={16} />
                 </span>
                 <p className="text-body-sm text-ice-white">{r.title}</p>
               </div>
@@ -201,7 +218,7 @@ export function Overview() {
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Zone Occupancy" subtitle={`Today, ${occupancy.zone_timestamp}`} />
           <div className="space-y-4 pt-2">
             {occupancy.zones.map((z, i) => (
@@ -216,7 +233,7 @@ export function Overview() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Security Posture" subtitle="Last 24h" />
           <div className="pt-2">
             <Bars
@@ -235,17 +252,17 @@ export function Overview() {
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader title="Recent Facility Activity" />
         <div className="-mx-4 overflow-x-auto px-4">
           <table className="w-full min-w-[720px] text-left text-body-sm">
             <thead>
               <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                <th className="py-2 pr-4 font-medium">Time</th>
-                <th className="py-2 pr-4 font-medium">Type</th>
-                <th className="py-2 pr-4 font-medium">Detail</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 font-medium">Agent</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Time</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Type</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Detail</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Status</th>
+                <th scope="col" className="py-2 font-medium">Agent</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline-slate">

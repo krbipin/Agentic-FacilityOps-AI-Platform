@@ -15,6 +15,7 @@ interface AreaChartProps {
   className?: string;
   pointLabel?: (p: AreaPoint) => string;
   highlight?: (p: AreaPoint) => boolean;
+  labelEvery?: number;
 }
 
 export function AreaChart({
@@ -27,6 +28,7 @@ export function AreaChart({
   className,
   pointLabel,
   highlight,
+  labelEvery = 1,
 }: AreaChartProps) {
   const width = 600;
   const padX = 4;
@@ -81,13 +83,16 @@ export function AreaChart({
       ))}
       {data.map((d, i) => {
         const hl = highlight?.(d);
+        const showLabel = i % labelEvery === 0;
         return (
           <g key={i}>
             <circle cx={x(i)} cy={y(d.value)} r={hl ? 4 : 0} fill={color} />
-            <text x={x(i)} y={height - 5} textAnchor="middle" fontSize={10} fill="var(--color-steel-slate)">
-              {d.label}
-            </text>
-            {hl && (
+            {showLabel && (
+              <text x={x(i)} y={height - 5} textAnchor="middle" fontSize={10} fill="var(--color-steel-slate)">
+                {d.label}
+              </text>
+            )}
+            {hl && showLabel && (
               <text x={x(i)} y={y(d.value) - 10} textAnchor="middle" fontSize={10} fill={color} fontWeight={700}>
                 {pointLabel ? pointLabel(d) : d.value}
               </text>
