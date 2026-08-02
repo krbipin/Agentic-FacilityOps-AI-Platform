@@ -1,4 +1,4 @@
-# Protect secrets if this folder is ever git-initialized / made public
+# Secrets & local env files
 opencode.json
 .env
 .env.*
@@ -22,6 +22,7 @@ graphify-out/
 /.stitch/
 /UI-UX-Specs/
 /Agentic_FacilityOps_AI_Platform.xml
+/AGENTS.md
 
 # dependencies
 /node_modules
@@ -59,6 +60,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-.vercel
-.env*
