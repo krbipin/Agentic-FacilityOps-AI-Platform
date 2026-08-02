@@ -88,7 +88,7 @@ full functionality. SQLite also gets `PRAGMA foreign_keys=ON` enabled on connect
 | Occupancy | `zones` empty, forecast accuracy 0; `today_total` falls back to current counts |
 | Security | `events_today` 0, no burst hours, empty visitors |
 | Cost | no categories → `total_spend` 0, `distribution` empty, `monthly_trend` empty |
-| Intelligence | `_correlation` returns `None` under 5 joined days or constant series; health defaults to 80 if no assets |
+| Intelligence | `_correlation` returns `None` when either series is empty or has < 5 joined days / constant values; health defaults to 80 if no assets |
 
 ---
 
@@ -101,6 +101,10 @@ full functionality. SQLite also gets `PRAGMA foreign_keys=ON` enabled on connect
 | Unknown agent id (`/api/agents/{id}/run`) | `404 "Unknown agent: <id>"` |
 | Unknown alert / work order / asset id | `404` |
 | `POST /api/work-orders` with unknown `asset_id` | `400 "Unknown asset_id"` |
+| `POST /api/energy` with `electricity_kwh <= 0` (or missing) | `422` — must be `> 0` |
+| `POST /api/assets` with bad `status` / `health_score` | `422` — status enum; score 0–100 |
+| `POST /api/facilities` with blank fields | `422` — name/type/location required |
+| `POST /api/facilities/{id}/activate` unknown id | `404 "Facility not found"` |
 | Work order id generation | `WO-<n>` = max existing id + 1 — single-writer assumption (demo), a race could collide under concurrent creates |
 | Asset detail prediction | `days_to_failure` / `predicted_risk` only for the top-12 risk assets; `null` otherwise |
 
@@ -132,6 +136,26 @@ refresh the demo dataset.
 - Local `.vercel/` state is gitignored — it is machine-specific and must not be committed.
 - CORS allows only `localhost:3000` origins; the frontend proxy means the browser never
   calls the backend cross-origin in production.
+
+---
+
+## 11. Facility management & active facility
+
+- The **active facility** is read from the `system_config` key `app.active_facility_id`
+  (default: first facility). All agents and endpoints are scoped to it. `GET /api/facilities`
+  returns `is_active` per row; switching writes the key and clears nothing (caches are keyed
+  per `facility_id`, so old-facility payloads expire naturally).
+- **Empty facilities are safe:** a created facility has no synthetic data; `advance()` is a
+  no-op on it, and every agent returns a zeroed/None payload (e.g. intelligence correlation
+  is `None`). New facilities stay empty until the user posts assets/energy readings.
+- **`sample_note` is per-facility:** `/api/health` shows the "Sample Data" note only when the
+  active facility is the seeded one (`app.seeded_facility_id`), so user-created facilities
+  never show the badge.
+- **POST caches:** `POST /api/assets` invalidates `maintenance:{fid}` + `cost:{fid}`;
+  `POST /api/energy` invalidates `energy:{fid}` + `cost:{fid}` — so dashboards reflect
+  user-entered data on the next poll.
+- **Asset id:** user-created assets get `AST-{facility_id*10000+n}` (loop-verified unique);
+  seeded assets keep `AST-<n>`.
 
 ## Related
 

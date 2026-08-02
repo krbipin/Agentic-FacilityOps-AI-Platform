@@ -50,6 +50,8 @@ in real time and refreshes every 15–30 seconds — nothing is hardcoded or a s
   linear-regression demand/occupancy/cost forecasts (pandas + scikit-learn)
 - **Backend-driven data** — no hardcoded KPIs; every value is computed from the database
   and labeled "Sample Data" via `/api/health`
+- **Multi-facility + data entry** — create facilities from the topbar or Settings, switch
+  the active facility, and add assets / energy readings that flow straight into agent KPIs
 - **Clerk auth** — sign-in/up, route guard, user menu; single shared Neon DB for local + prod
 
 ---

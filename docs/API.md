@@ -49,8 +49,10 @@ curl https://facilityops-backend-izin.onrender.com/api/health
 - **Live advance:** dashboard, alert, and copilot endpoints call the live simulator
   (`advance()`) before computing, so payloads always reflect "now".
 - **Errors:** JSON `{ "detail": "..." }` with the status code.
-- **Facility:** all payloads target the first facility (single-facility demo). Responses
-  include a `facility: { name, facility_type, location }` block where relevant.
+- **Facility:** all payloads target the **active facility** (a `system_config` key
+  `app.active_facility_id`, defaulting to the first facility). Switch it with
+  `POST /api/facilities/{id}/activate`. Responses include a
+  `facility: { name, facility_type, location }` block where relevant.
 
 ---
 
@@ -166,12 +168,54 @@ status → `400`.
 
 Allowed statuses: `Open`, `In Progress`, `Scheduled`, `Completed`.
 
+### Facilities — `/api/facilities`
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/facilities` | List all facilities `{ "items": [{ id, name, facility_type, location, is_active }] }` |
+| `POST /api/facilities` | Create an **empty** facility (201); auto-activates it |
+| `POST /api/facilities/{id}/activate` | Switch the active facility |
+
+**POST body** (all required):
+
+```json
+{ "name": "Skyline Tower", "facility_type": "Corporate HQ", "location": "Pune, India" }
+```
+
+- A new facility has **no synthetic data** — dashboards show zeroes until the user enters
+  assets and energy readings. `/api/health` omits the `sample_note` for it.
+- Unknown facility id on activate → `404 "Facility not found"`.
+
 ### Assets — `/api/assets`
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/assets?status=&asset_type=&search=&limit=&offset=` | Paginated list, filters, name/id search; sorted by `health_score` asc |
+| `POST /api/assets` | Create an asset for the active facility (201) |
 | `GET /api/assets/{asset_id}` | Detail + `maintenance_history` + failure prediction |
+
+**POST body** (targets the active facility):
+
+```json
+{
+  "name": "Chiller-1",
+  "asset_type": "HVAC",
+  "location": "Data Center",
+  "status": "Good",
+  "health_score": 82,
+  "manufacturer": "Trane",
+  "useful_life_pct": 100,
+  "install_date": "2024-01-15",
+  "last_maintenance": "2026-01-15",
+  "next_due": null
+}
+```
+
+- `status` must be `Excellent | Good | Warning | Critical`; `health_score`/`useful_life_pct`
+  are 0–100. `name`, `asset_type`, `location` are required.
+- Id is generated collision-safe as `AST-{facility_id*10000+n}`.
+- The POST invalidates the maintenance + cost agent caches for that facility, so dashboards
+  reflect the new asset immediately.
 
 `search` matches `name` or `id` (case-insensitive contains). `limit` default 200.
 Unknown asset → `404`.
@@ -190,6 +234,30 @@ Detail adds:
 
 `days_to_failure` / `predicted_risk` are present only for assets in the top-12 risk list
 computed by the Maintenance agent (prediction is cached per facility).
+
+### Energy — `/api/energy`
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/energy` | Record a user-entered consumption reading for the active facility (201) |
+
+**POST body** (`electricity_kwh` required, rest optional):
+
+```json
+{
+  "electricity_kwh": 420.5,
+  "hvac_kwh": 260.0,
+  "lighting_kwh": 90.0,
+  "equipment_kwh": 70.5,
+  "water_l": 1400,
+  "timestamp": "2026-08-02T12:11:00"
+}
+```
+
+- `electricity_kwh` must be `> 0` (≤ 100 000); split sub-meters and `water_l` are `>= 0`.
+- `timestamp` optional (defaults to now); rounded to the minute.
+- Invalid body → `422` with a `detail` message.
+- The POST invalidates the energy + cost agent caches for that facility.
 
 ### Settings — `/api/settings`
 
@@ -236,8 +304,12 @@ occupancy, security, cost) select a focused briefing, otherwise a full six-agent
 | Code | Typical cause |
 |------|---------------|
 | `400` | Invalid status on PATCH, unknown `asset_id` on work-order POST |
-| `404` | Unknown agent id, alert id, work order id, or asset id |
+| `404` | Unknown agent id, alert id, work order id, asset id, or facility id |
+| `422` | Validation failure on `POST /api/assets`, `POST /api/energy`, `POST /api/facilities` |
 | `500` | Backend failure (e.g. database unreachable) |
+
+Create endpoints (`POST /api/work-orders`, `POST /api/assets`, `POST /api/energy`,
+`POST /api/facilities`) return `201`.
 
 ## Related
 

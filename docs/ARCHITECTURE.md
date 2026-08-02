@@ -99,7 +99,9 @@ FastAPI app created in `main.py` with a lifespan that:
 | `agents.py` | `/api/agents` | Agent registry, list, and `/{id}/run` |
 | `alerts.py` | `/api/alerts` | Alerts list/summary/status PATCH |
 | `work_orders.py` | `/api/work-orders` | Work order CRUD + technician roster |
-| `assets.py` | `/api/assets` | Asset list/detail (+ failure prediction) |
+| `assets.py` | `/api/assets` | Asset list/detail, failure prediction, user-created assets |
+| `energy.py` | `/api/energy` | User-entered energy readings (`POST`) |
+| `facilities.py` | `/api/facilities` | Facility list/create + active-facility switch |
 | `settings.py` | `/api/settings` | Config, integrations, agent thresholds, facility, team |
 | `copilot.py` | `/api/copilot` | Deterministic AI copilot chat + agent collaboration |
 

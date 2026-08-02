@@ -25,6 +25,11 @@ rows. Configuration (tariffs, targets, thresholds) is a *constant* in those form
 a pinned KPI. The topbar "Sample Data" badge (driven by `/api/health` →
 `app.sample_data_note`) labels the synthetic source.
 
+**User data entry** (`POST /api/assets`, `POST /api/energy`, `POST /api/facilities`) writes
+rows into the same tables the agents read — a user-entered asset or reading flows through
+the identical cached agent pipeline as seeded history, and the relevant agent cache is
+invalidated so dashboards update immediately.
+
 ---
 
 ## 2. Page → endpoint map
@@ -33,7 +38,7 @@ a pinned KPI. The topbar "Sample Data" badge (driven by `/api/health` →
 |------|-------|------------------|
 | Sign in / Sign up (Clerk) | `/sign-in` · `/sign-up` | Clerk hosted |
 | Facility Operations Dashboard | `/` | `GET /api/dashboards/overview` |
-| Energy Dashboard | `/energy` | `GET /api/dashboards/energy` |
+| Energy Dashboard | `/energy` | `GET /api/dashboards/energy` · `POST /api/energy` |
 | Maintenance Dashboard | `/maintenance` | `GET /api/dashboards/maintenance` |
 | Occupancy Dashboard | `/occupancy` | `GET /api/dashboards/occupancy` |
 | Security Dashboard | `/security` | `GET /api/dashboards/security` |
@@ -41,10 +46,14 @@ a pinned KPI. The topbar "Sample Data" badge (driven by `/api/health` →
 | Facility Intelligence | `/intelligence` | `GET /api/dashboards/intelligence` |
 | Alerts & Notifications | `/alerts` | `GET /api/dashboards/alerts` · `GET /api/alerts` · `PATCH /api/alerts/{id}` |
 | Executive Reporting | `/reports` | `GET /api/dashboards/reports` |
-| Assets Management | `/assets` | `GET /api/dashboards/assets` · `GET /api/assets` · `GET /api/assets/{id}` |
+| Assets Management | `/assets` | `GET /api/dashboards/assets` · `GET /api/assets` · `POST /api/assets` · `GET /api/assets/{id}` |
 | Work Orders | `/work-orders` | `GET /api/dashboards/work-orders` · `GET /api/work-orders` · `POST/PATCH /api/work-orders` |
 | Settings & Integrations | `/settings` | `GET /api/settings/*` |
 | AI Copilot | `/copilot` | `GET /api/copilot/agents` · `POST /api/copilot/chat` |
+
+> **Global shell:** the topbar facility menu and Settings → Facilities panel use
+> `GET/POST /api/facilities` + `POST /api/facilities/{id}/activate`. Every dashboard is
+> scoped to the **active facility** (see [API.md](./API.md)).
 
 ---
 

@@ -66,6 +66,9 @@ erDiagram
 | `last_maintenance` | date | |
 | `next_due` | date, nullable | |
 
+> **Id generation:** seeded assets use `AST-<n>`; user-created assets
+> (`POST /api/assets`) get a collision-safe `AST-{facility_id*10000+n}`.
+
 ### `maintenance_records`
 
 | Column | Type | Notes |
@@ -269,3 +272,8 @@ the `facilities` table is empty (first boot).
 
 **Reseed:** `uv run reseed.py` (from `backend/`) drops all tables, recreates them, and
 re-seeds. See [WORKFLOW.md](./WORKFLOW.md).
+
+> **Facility pointers:** seeding writes `app.seeded_facility_id` (used by `/api/health` to
+> decide the "Sample Data" badge) and `app.active_facility_id` (the default active facility)
+> into `system_config`. Created facilities are stored the same way and can be activated via
+> `POST /api/facilities/{id}/activate`.
