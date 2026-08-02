@@ -409,6 +409,17 @@ export interface SettingsIntegrationsPayload {
   items: IntegrationItem[];
 }
 
+export interface SettingsAgentItem {
+  id: string;
+  name: string;
+  module: string;
+  threshold: string;
+}
+
+export interface SettingsAgentsPayload {
+  agents: SettingsAgentItem[];
+}
+
 export interface CopilotAgentsPayload {
   agents: { name: string; status: string; insight: string }[];
   facility_health: number;
