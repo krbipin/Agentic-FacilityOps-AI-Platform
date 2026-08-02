@@ -273,7 +273,7 @@ computed by the Maintenance agent (prediction is cached per facility).
 
 | Endpoint | Purpose |
 |----------|---------|
-| `POST /api/copilot/chat` | Deterministic agent-collaboration chat |
+| `POST /api/copilot/chat` | Agent-collaboration chat. If `GROQ_API_KEY` is set, replies come from the Groq LLM (`llama-3.3-70b-versatile`) grounded in live agent factoids; otherwise a deterministic keyword composer answers. Groq failures auto-fall back |
 | `GET /api/copilot/agents` | Live agent status, facility health, correlations |
 
 **POST body:**

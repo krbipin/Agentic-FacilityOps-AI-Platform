@@ -19,3 +19,8 @@ CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Groq API key for the live Facility Copilot. Optional: without it the chat
+# endpoint falls back to a deterministic keyword composer. Set in backend/.env
+# (gitignored) and the Render service env vars — never in committed code.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")

@@ -103,7 +103,7 @@ FastAPI app created in `main.py` with a lifespan that:
 | `energy.py` | `/api/energy` | User-entered energy readings (`POST`) |
 | `facilities.py` | `/api/facilities` | Facility list/create + active-facility switch |
 | `settings.py` | `/api/settings` | Config, integrations, agent thresholds, facility, team |
-| `copilot.py` | `/api/copilot` | Deterministic AI copilot chat + agent collaboration |
+| `copilot.py` | `/api/copilot` | AI copilot chat (Groq LLM when `GROQ_API_KEY` set, deterministic fallback otherwise) + agent collaboration |
 
 ### 3.2 Agent mesh
 

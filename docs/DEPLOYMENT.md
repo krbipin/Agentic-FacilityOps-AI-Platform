@@ -94,6 +94,7 @@ npm run dev                   # http://localhost:3000
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL` | Frontend | Yes | `/` |
 | `NEXT_PUBLIC_CLERK_SIGN_OUT_REDIRECT_URL` | Frontend | Yes | `/` |
 | `BACKEND_URL` | Frontend `.env.local` + Vercel | Yes | Backend origin; local `http://127.0.0.1:8000`, prod the Render URL |
+| `GROQ_API_KEY` | Backend `backend/.env` + Render | No | Groq key → live LLM answers in the Facility Copilot. Missing → deterministic fallback |
 
 Template files: `.env.example` (frontend) and `backend/.env.example` (backend).
 
@@ -121,7 +122,9 @@ Steps:
 1. Create a Render web service from the GitHub repo (root dir `backend`), or use the
    `render.yaml` blueprint — it applies the settings above automatically.
 2. Set the `DATABASE_URL` env var in the Render dashboard to the Neon URL.
-3. `autoDeploy: true` rebuilds and redeploys on every push to `master`.
+3. (Optional) Set `GROQ_API_KEY` in the Render dashboard to enable live LLM Copilot
+   answers. Without it the Copilot uses its deterministic fallback composer.
+4. `autoDeploy: true` rebuilds and redeploys on every push to `master`.
 
 **Keep-alive:** a scheduled cron on Render hits `GET /api/health` periodically so the free
 instance and the Neon connection stay warm.
@@ -145,6 +148,8 @@ instance and the Neon connection stay warm.
 
 - The **Neon URL** is a secret: it lives **only** in `backend/.env` (gitignored) and the
   Render env var dashboard — never in `render.yaml`, `.env.example`, or committed code.
+- The **Groq key** is a secret too: same rule — `backend/.env` (gitignored) + Render env
+  vars only. Never commit it.
 - Clerk keys are similarly only in `.env.local` (gitignored) and the Vercel dashboard.
 - `.env.example` / `backend/.env.example` contain **placeholders only**.
 - Local `.vercel/` state is gitignored.

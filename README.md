@@ -94,6 +94,7 @@ Full setup, env variables, and deployment: [DEPLOYMENT.md](docs/DEPLOYMENT.md).
 | `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL` · `AFTER_SIGN_UP_URL` | `.env.local` | `/` |
 | `NEXT_PUBLIC_CLERK_SIGN_OUT_REDIRECT_URL` | `.env.local` | `/` |
 | `BACKEND_URL` | `.env.local` + Vercel | Backend origin (default `http://127.0.0.1:8000`) |
+| `GROQ_API_KEY` | `backend/.env` + Render | Optional — enables **live LLM answers** in the Facility Copilot (falls back to a deterministic composer if unset) |
 
 Template files: `.env.example` (frontend) and `backend/.env.example` (backend). Secrets
 only ever live in gitignored env files / platform dashboards.
