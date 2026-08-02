@@ -6,6 +6,37 @@ Autonomous AI agents for smart, secure & sustainable facilities — continuously
 
 ---
 
+## Live deployment
+
+| Component | URL | Status |
+|-----------|-----|--------|
+| **Web Platform** — Vercel | [facilityops-platform.vercel.app](https://facilityops-platform.vercel.app) | **Live** ✓ · Clerk sign-in |
+| **API Backend** — Render | [facilityops-backend-izin.onrender.com](https://facilityops-backend-izin.onrender.com) | **Live** ✓ · `GET /api/health` |
+| **Source** — GitHub | [github.com/krbipin/Agentic-FacilityOps-AI-Platform](https://github.com/krbipin/Agentic-FacilityOps-AI-Platform) | `master` |
+
+> **Try it:** open the web platform, create a Clerk account (new accounts are auto-provisioned), and land on the live Facility Operations Dashboard. Every number on screen is computed from the backend in real time and refreshes every 15–30 seconds — nothing is hardcoded or a static screenshot.
+
+---
+
+## Table of contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Core agents & modules](#core-agents--modules)
+- [Dashboards (14 pages)](#dashboards-14-pages)
+- [Tech stack](#tech-stack)
+- [Live simulation & polling](#live-simulation--polling)
+- [Data pipeline & sample dataset](#data-pipeline--sample-dataset)
+- [Getting started](#getting-started)
+- [Database schema](#database-schema)
+- [API reference](#api-reference)
+- [Deployment](#deployment)
+- [Project structure](#project-structure)
+- [Verification](#verification)
+- [Status](#status)
+
+---
+
 ## Overview
 
 Large facilities (corporate offices, IT parks, universities, hospitals) generate huge operational data from IoT sensors, HVAC systems, access control, maintenance logs, occupancy monitoring, and utility meters. Facility managers struggle with rising energy costs, delayed maintenance, inefficient space utilization, security incidents, and operational inefficiencies.
@@ -29,35 +60,34 @@ This platform deploys a suite of **autonomous AI agents** that continuously moni
 
 ## Architecture
 
-```
-┌─────────────────────────────┐          ┌──────────────────────────────────────────┐
-│   Next.js 16 Frontend       │          │   FastAPI Backend                        │
-│   (14 pages, Clerk auth)    │          │                                          │
-│                             │  /api/*   │  ┌────────────────────────────────┐      │
-│  Dashboards ────────────────┼──────────►│  │ Routers (dashboards, agents,   │      │
-│  15s / 30s polling          │  proxy    │  │  alerts, work-orders, assets,   │      │
-│                             │  rewrite  │  │  settings, copilot)             │      │
-│  Topbar: Live clock,        │          │  └──────────────┬─────────────────┘      │
-│  alerts bell, sample badge  │          │                 │                        │
-│                             │          │  ┌──────────────▼─────────────────┐      │
-│  Next proxy                 │          │  │ Agent pipeline                 │      │
-│  (next.config.ts) ──────────┼─────────►│  │  Energy ──► Maintenance        │      │
-│  → BACKEND_URL              │          │  │  Occupancy ──► Security        │      │
-│                             │          │  │  Cost ──► Intelligence Engine  │      │
-└─────────────────────────────┘          │  │  (pandas + scikit-learn)       │      │
-                                         │  └──────────────┬─────────────────┘      │
-                                         │                 │ 45s agent cache         │
-                                         │  ┌──────────────▼─────────────────┐      │
-                                         │  │ Live Simulator (live.py)       │      │
-                                         │  │ 1-minute ticks, business-day   │      │
-                                         │  │ diurnal curves                 │      │
-                                         │  └──────────────┬─────────────────┘      │
-                                         └─────────────────┼────────────────────────┘
-                                                           │ SQLAlchemy / psycopg3
-                                             ┌─────────────▼─────────────┐
-                                             │ PostgreSQL (Neon, shared)  │
-                                             │ SQLite fallback (local)    │
-                                             └───────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph FE["Next.js 16 Frontend — Vercel"]
+        UI["14 dashboards · Clerk auth<br/>15s / 30s polling · Topbar live clock"]
+        MW["src/proxy.ts — Clerk route guard"]
+        UI --> MW
+    end
+
+    subgraph BE["FastAPI Backend — Render"]
+        R["API Routers — dashboards · agents · alerts<br/>work-orders · assets · settings · copilot"]
+        A["Agents — Energy · Maintenance · Occupancy<br/>Security · Cost (pandas + scikit-learn)"]
+        I["Facility Intelligence Engine"]
+        S["Live Simulator — live.py<br/>1-minute ticks · business-day curves"]
+        R --> A
+        A --> I
+        A --> S
+    end
+
+    subgraph DATA["Data"]
+        C["Agent cache (45s) · impact cache (120s)"]
+        D[("PostgreSQL — Neon<br/>SQLite fallback")]
+    end
+
+    MW -->|"/api/* proxy rewrite"| R
+    A --> C
+    A --> D
+    I --> D
+    S --> D
 ```
 
 **Data workflow**
@@ -209,9 +239,19 @@ npm run dev                   # http://localhost:3000
 
 Canonical entities (16 tables via SQLAlchemy models):
 
-```
-FACILITIES 1:N → ASSETS, ENERGY_USAGE, OCCUPANCY_RECORDS, SECURITY_EVENTS, COST_REPORTS, ALERTS
-ASSETS     1:N → MAINTENANCE_RECORDS
+```mermaid
+erDiagram
+    FACILITIES ||--o{ ASSETS : owns
+    FACILITIES ||--o{ ENERGY_USAGE : records
+    FACILITIES ||--o{ OCCUPANCY_RECORDS : tracks
+    FACILITIES ||--o{ SECURITY_EVENTS : logs
+    FACILITIES ||--o{ COST_REPORTS : reports
+    FACILITIES ||--o{ ALERTS : raises
+    FACILITIES ||--o{ MEETING_ROOMS : has
+    FACILITIES ||--o{ VISITORS : receives
+    FACILITIES ||--o{ VENDORS : contracts
+    ASSETS ||--o{ MAINTENANCE_RECORDS : serviced_by
+    ASSETS ||--o{ WORK_ORDERS : generates
 ```
 
 | Entity | Key fields |
@@ -235,6 +275,24 @@ ASSETS     1:N → MAINTENANCE_RECORDS
 ## API reference
 
 Base URL: `http://127.0.0.1:8000` (or `https://facilityops-backend-izin.onrender.com`).
+
+**Live health check:**
+
+```bash
+curl https://facilityops-backend-izin.onrender.com/api/health
+```
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "facility": "Corporate HQ & IT Park",
+  "sample_note": "Synthetic 90-day sample dataset — every value on screen is computed live from this database (no hardcoded numbers).",
+  "counts": { "assets": 2450, "energy_usage": 5686, "occupancy_records": 22504 }
+}
+```
+
+> The minute-level series (`energy_usage`, `occupancy_records`) grow continuously — the live simulator appends a new row per facility every minute.
 
 | Method | Path | Purpose |
 |--------|------|---------|
