@@ -60,3 +60,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# VBA presentation generator (local-run only)
+generate_facilityops_deck.bas
