@@ -139,7 +139,9 @@ def security(session: Session = Depends(get_db), _: Session = Depends(advance_li
 @router.get("/cost")
 def cost(session: Session = Depends(get_db), _: Session = Depends(advance_live)):
     fid = get_facility(session)
-    return {"facility": _facility(session, fid), **cost_agent.run(session, fid)}
+    payload = cost_agent.run(session, fid)
+    payload["facility_health"] = intelligence_agent.run(session, fid)["facility_health"]
+    return {"facility": _facility(session, fid), **payload}
 
 
 @router.get("/intelligence")

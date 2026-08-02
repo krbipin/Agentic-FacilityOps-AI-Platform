@@ -11,7 +11,7 @@ import { Icon } from "@/components/ui/icons";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
 import { useApiData, type CostPayload } from "@/lib/api";
-import { fmtInt, fmtMoney } from "@/lib/format";
+import { fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 
 const EMPTY: CostPayload = {
   facility: { name: "", facility_type: "", location: "" }, agent: "", total_spend: 0, total_budget: 0,
@@ -26,6 +26,14 @@ const DIST_COLORS = {
   Administrative: "var(--color-violet)",
 };
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function fmtMonth(m: string): string {
+  const [y, mo] = m.split("-");
+  const name = MONTH_NAMES[Number(mo) - 1];
+  return name && y ? `${name} '${y.slice(2)}` : m;
+}
+
 export function Cost() {
   const { data, loading, error, refresh } = useApiData<CostPayload>("/api/dashboards/cost", EMPTY, 15000);
   const { toast } = useToast();
@@ -34,10 +42,19 @@ export function Cost() {
     return (
       <div className="space-y-6" aria-busy="true">
         <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
+        <Skeleton className="h-56" />
         <Skeleton className="h-64" />
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Skeleton className="h-56" />
+          <Skeleton className="h-56" />
+        </div>
       </div>
     );
   }
@@ -46,7 +63,10 @@ export function Cost() {
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
         <Icon name="alert" className="text-alert-red" size={32} />
-        <p className="text-body-md font-semibold text-ice-white">Failed to load cost telemetry</p>
+        <div>
+          <p className="text-body-md font-semibold text-ice-white">Failed to load cost telemetry</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
+        </div>
         <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
     );
@@ -60,7 +80,11 @@ export function Cost() {
   }));
 
   const overBudget = data.categories.find((c) => c.over_budget);
-  const trend = data.monthly_trend.map((p) => ({ label: p.month, value: p.amount }));
+  const trend = data.monthly_trend.map((p) => ({ label: fmtMonth(p.month), value: p.amount }));
+  const avgSpend = trend.length ? trend.reduce((s, p) => s + p.value, 0) / trend.length : 0;
+  const peak = trend.length ? trend.reduce((a, b) => (b.value > a.value ? b : a)) : null;
+  const costDelta = `${data.cost_reduction_pct >= 0 ? "▼" : "▲"} vs last month`;
+  const costTone = data.cost_reduction_pct >= 0 ? "green" : "red";
 
   return (
     <div>
@@ -75,63 +99,85 @@ export function Cost() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Cost Reduction" value={`${data.cost_reduction_pct}%`} icon="dollar" delta="▼ YoY" deltaTone="green" sub="Compared to last year" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard label="Cost Reduction" value={fmtPct(data.cost_reduction_pct)} icon="dollar" delta={costDelta} deltaTone={costTone} sub="Compared to previous month" />
         <KpiCard label="ROI Generated" value={fmtMoney(data.roi_generated, true)} icon="chart" delta={`${data.roi_multiple}x multiple`} deltaTone="green" sub="Since program start" />
         <KpiCard label="Facility Health" value={`${data.facility_health}/100`} icon="brain" sub="Cross-agent score" />
         <KpiCard label="Optimizations Live" value={fmtInt(data.optimizations)} icon="sparkles" sub="Applied by AI agents" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[2fr_3fr]">
-        <Card>
-          <CardHeader title="Cost Distribution" subtitle="This month" />
-          <div className="flex flex-col items-center gap-5 pt-2 sm:flex-row">
-            <Donut segments={donut} centerValue={fmtMoney(data.total_spend, true)} centerLabel="Total" size={150} />
-            <div className="w-full flex-1">
-              <DonutLegend
-                items={donut.map((s) => ({ ...s, pct: s.value, value: fmtMoney(data.total_spend * s.value / 100) }))}
-              />
+        <Card className="p-card-padding">
+          <CardHeader title="Cost Distribution" subtitle="Spend share by category · this month" />
+          {donut.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="chart" className="text-steel-slate" size={28} />
+              <p className="text-body-sm text-ice-white">No cost data yet</p>
+              <p className="text-caption text-steel-slate">Spend distribution will appear once cost reports are recorded.</p>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center gap-5 pt-2 sm:flex-row">
+              <Donut segments={donut} centerValue={fmtMoney(data.total_spend, true)} centerLabel="Total" size={150} centerScale={0.16} className="h-32 w-32 sm:h-36 sm:w-36 lg:h-40 lg:w-40" />
+              <div className="w-full flex-1">
+                <DonutLegend
+                  items={donut.map((s) => ({ ...s, pct: s.value, value: fmtMoney(data.total_spend * s.value / 100) }))}
+                />
+              </div>
+            </div>
+          )}
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Budget Compliance" subtitle="Spend vs budget · this month" />
-          <div className="space-y-4 pt-2">
-            {data.categories.map((c) => (
-              <div key={c.category} className="flex items-center gap-3 text-body-sm">
-                <span className="w-28 shrink-0 text-steel-slate">{c.category}</span>
-                <div className="relative h-6 flex-1 overflow-hidden rounded-control bg-elevated-slate">
-                  <div
-                    className="h-full rounded-control"
-                    style={{ width: `${Math.min(100, (c.amount / c.budget) * 100)}%`, background: c.over_budget ? "var(--color-alert-red)" : "var(--color-signal-green)" }}
-                    role="img"
-                    aria-label={`${c.category} ${c.amount} of ${c.budget}`}
-                  />
-                </div>
-                <span className="w-28 text-right font-mono text-caption text-ice-white">{fmtMoney(c.amount)}</span>
-                {c.over_budget && <Chip tone="red">OVER</Chip>}
+          {data.categories.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="dollar" className="text-steel-slate" size={28} />
+              <p className="text-body-sm text-ice-white">No budget data yet</p>
+              <p className="text-caption text-steel-slate">Category budgets will appear once cost reports are recorded.</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4 pt-2">
+                {data.categories.map((c) => (
+                  <div key={c.category} className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-body-sm sm:gap-x-3">
+                    <span className="w-24 shrink-0 truncate text-steel-slate sm:w-28">{c.category}</span>
+                    <div className="relative h-6 min-w-[64px] flex-1 overflow-hidden rounded-control bg-elevated-slate">
+                      <div
+                        className="h-full rounded-control"
+                        style={{ width: `${c.budget ? Math.min(100, (c.amount / c.budget) * 100) : 0}%`, background: c.over_budget ? "var(--color-alert-red)" : "var(--color-signal-green)" }}
+                        role="img"
+                        aria-label={`${c.category} ${c.amount} of ${c.budget}`}
+                      />
+                    </div>
+                    <span className="w-24 shrink-0 text-right font-mono text-caption text-ice-white sm:w-28">{fmtMoney(c.amount)}</span>
+                    {c.over_budget && <Chip tone="red" className="ml-auto sm:ml-0">OVER</Chip>}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <p className="mt-4 text-caption text-steel-slate">
-            Total {fmtMoney(data.total_spend)} of {fmtMoney(data.total_budget)} budget{overBudget && (
-              <> · <span className="text-alert-red">{overBudget.category} {fmtMoney(overBudget.amount - overBudget.budget)} over</span></>
-            )}
-          </p>
+              <p className="mt-4 text-caption text-steel-slate">
+                Total {fmtMoney(data.total_spend)} of {fmtMoney(data.total_budget)} budget{overBudget && (
+                  <> · <span className="text-alert-red">{overBudget.category} {fmtMoney(overBudget.amount - overBudget.budget)} over</span></>
+                )}
+              </p>
+            </>
+          )}
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader title="Savings Opportunities" subtitle="Cost Optimization Agent" />
         <ul role="list" className="divide-y divide-hairline-slate">
           {data.savings.length === 0 && (
-            <li className="py-8 text-center text-body-sm text-steel-slate">No savings opportunities right now</li>
+            <li className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="check" className="text-signal-green" size={28} />
+              <p className="text-body-sm text-ice-white">No savings opportunities right now</p>
+              <p className="text-caption text-steel-slate">The Cost Optimization Agent will surface savings when it finds them.</p>
+            </li>
           )}
           {data.savings.map((s) => (
-            <li key={s.title} className="flex flex-wrap items-center gap-3 py-3">
+            <li key={s.title} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
               <Icon name="dollar" className="shrink-0 text-signal-green" size={16} />
-              <span className="min-w-0 flex-1 text-body-sm text-ice-white">{s.title}</span>
+              <span className="min-w-0 flex-1 basis-56 text-body-sm text-ice-white">{s.title}</span>
               <span className="font-mono text-caption text-signal-green">{s.impact}</span>
               <Chip tone={s.status === "Applied" ? "green" : "blue"}>{s.status}</Chip>
               <Button variant="secondary" size="sm" onClick={() => toast(`Applied: ${s.title}`)}>Apply</Button>
@@ -140,32 +186,44 @@ export function Cost() {
         </ul>
       </Card>
 
-      <Card className="mt-6">
-        <CardHeader title="Cost Trend" subtitle={`Monthly operational spend vs budget · ${data.cost_reduction_pct}% YoY`} />
+      <Card className="mt-6 p-card-padding">
+        <CardHeader title="Cost Trend" subtitle={`Monthly operational spend · ${fmtPct(data.cost_reduction_pct)} vs last month`} />
         <div className="pt-2">
           {trend.length === 0 ? (
-            <p className="py-8 text-center text-body-sm text-steel-slate">No monthly trend data yet</p>
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="chart" className="text-steel-slate" size={28} />
+              <p className="text-body-sm text-ice-white">No monthly trend data yet</p>
+              <p className="text-caption text-steel-slate">Spend history will chart once cost reports are recorded.</p>
+            </div>
           ) : (
-            <AreaChart
-              data={trend}
-              color="var(--color-signal-green)"
-              fill="var(--color-signal-green)"
-            />
+            <>
+              <AreaChart
+                data={trend}
+                color="var(--color-signal-green)"
+                fill="var(--color-signal-green)"
+                highlight={(p) => p === trend[trend.length - 1]}
+                pointLabel={(p) => fmtMoney(p.value, true)}
+                labelEvery={Math.max(1, Math.ceil(trend.length / 6))}
+              />
+              <p className="mt-2 text-caption text-steel-slate">
+                Avg {fmtMoney(Math.round(avgSpend))}/mo{peak && <> · Peak {fmtMoney(peak.value)} in {peak.label}</>}
+              </p>
+            </>
           )}
         </div>
       </Card>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Vendor Spend" subtitle="Top vendors" />
           <div className="-mx-4 overflow-x-auto px-4">
             <table className="w-full min-w-[480px] text-left text-body-sm">
               <thead>
                 <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                  <th className="py-2 pr-4 font-medium">Vendor</th>
-                  <th className="py-2 pr-4 font-medium">Category</th>
-                  <th className="py-2 pr-4 font-medium">Spend</th>
-                  <th className="py-2 font-medium">Δ</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Vendor</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Category</th>
+                  <th scope="col" className="py-2 pr-4 font-medium">Spend</th>
+                  <th scope="col" className="py-2 font-medium">Δ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-hairline-slate">
@@ -176,8 +234,8 @@ export function Cost() {
                 )}
                 {data.vendor_spend.map((v) => (
                   <tr key={v.name} className="text-steel-slate">
-                    <td className="py-2.5 pr-4 text-ice-white">{v.name}</td>
-                    <td className="py-2.5 pr-4">{v.category}</td>
+                    <td className="max-w-[200px] truncate py-2.5 pr-4 text-ice-white">{v.name}</td>
+                    <td className="max-w-[140px] truncate py-2.5 pr-4">{v.category}</td>
                     <td className="py-2.5 pr-4 font-mono text-caption">{fmtMoney(v.spend)}</td>
                     <td className="py-2.5"><span className={`text-caption ${v.trend_pct > 0 ? "text-alert-red" : "text-signal-green"}`}>{v.trend_pct > 0 ? "+" : ""}{v.trend_pct}%</span></td>
                   </tr>
@@ -187,9 +245,9 @@ export function Cost() {
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="ROI Summary" subtitle="AI recommendations applied this quarter" />
-          <div className="grid grid-cols-3 gap-4 pt-2">
+          <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-3">
             {[
               { value: `${data.optimizations}`, label: "Optimizations" },
               { value: fmtMoney(data.realized_savings, true), label: "Realized savings" },
