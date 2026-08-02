@@ -11,7 +11,8 @@ import { TextField, SelectField } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
-import { fetcher, patch, type AssetItem, type WorkOrderItem } from "@/lib/api";
+import { createWorkOrder, fetcher, patch, type AssetItem, type WorkOrderItem } from "@/lib/api";
+import { fmtTimeAgo } from "@/lib/format";
 
 const COLUMNS: { key: string; label: string; tone: Tone }[] = [
   { key: "Open", label: "Open", tone: "red" },
@@ -31,14 +32,20 @@ export function WorkOrders() {
   const { toast } = useToast();
   const [orders, setOrders] = useState<WorkOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<WorkOrderItem | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [autoCreate, setAutoCreate] = useState(false);
   const [notes, setNotes] = useState("");
   const [completeOpen, setCompleteOpen] = useState(false);
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [technicians, setTechnicians] = useState<string[]>([]);
-  const [defaultDue] = useState(() => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10));
+  const [createAsset, setCreateAsset] = useState("");
+  const [createIssue, setCreateIssue] = useState("");
+  const [createPriority, setCreatePriority] = useState("P2");
+  const [createAssignee, setCreateAssignee] = useState("");
+  const [createDue, setCreateDue] = useState(() => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10));
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +60,10 @@ export function WorkOrders() {
           setOrders(d);
           setAssets(a.items);
           setTechnicians(t.technicians);
+          setError(null);
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : "Request failed");
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -69,7 +80,11 @@ export function WorkOrders() {
   const refresh = useCallback(() => {
     setLoading(true);
     fetcher<WorkOrderItem[]>("/api/work-orders")
-      .then(setOrders)
+      .then((d) => {
+        setOrders(d);
+        setError(null);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Request failed"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -85,6 +100,36 @@ export function WorkOrders() {
     }
   }, [orders, toast]);
 
+  const create = async () => {
+    if (!createAsset) {
+      setCreateError("Select an asset");
+      return;
+    }
+    if (!createIssue.trim()) {
+      setCreateError("Issue type is required");
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const wo = await createWorkOrder({
+        asset_id: createAsset,
+        title: createIssue.trim(),
+        priority: createPriority,
+        source: "Manual",
+        due_date: createDue || undefined,
+      });
+      if (createAssignee) await patch(`/api/work-orders/${wo.id}`, { assignee: createAssignee });
+      toast(`Work order ${wo.id} created`, "success");
+      setCreateOpen(false);
+      refresh();
+    } catch {
+      setCreateError("Failed to create work order");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const counts = useMemo(() => {
     const c: Record<string, number> = { Open: 0, "In Progress": 0, Scheduled: 0, Completed: 0 };
     for (const o of orders) c[o.status] = (c[o.status] ?? 0) + 1;
@@ -97,8 +142,22 @@ export function WorkOrders() {
     return (
       <div className="space-y-6" aria-busy="true" aria-label="Loading work orders">
         <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
-        <div className="grid grid-cols-3 gap-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-96" />)}</div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}</div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-96" />)}</div>
+        <Skeleton className="h-40" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
+        <Icon name="clipboard" className="text-alert-amber" size={32} />
+        <div>
+          <p className="text-body-md font-semibold text-ice-white">Work orders unavailable</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
+        </div>
+        <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
     );
   }
@@ -112,23 +171,9 @@ export function WorkOrders() {
         subtitle={`${orders.length} tickets · ${aiOrders.length} predicted failures flagged`}
         agent="Maintenance Agent"
         actions={
-          <>
-            <label className="inline-flex cursor-pointer items-center gap-2 text-caption text-steel-slate">
-              Auto-create from predictions
-              <input
-                type="checkbox"
-                checked={autoCreate}
-                onChange={(e) => {
-                  setAutoCreate(e.target.checked);
-                  toast(e.target.checked ? `${aiOrders.length} draft tickets generated` : "Auto-create disabled", "success");
-                }}
-                className="size-4 accent-[var(--color-primary)]"
-              />
-            </label>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Icon name="plus" size={14} /> New work order
-            </Button>
-          </>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Icon name="plus" size={14} /> New work order
+          </Button>
         }
       />
 
@@ -141,7 +186,7 @@ export function WorkOrders() {
         ].map((s) => (
           <div key={s.label} className="rounded-card bg-panel-slate glow-border panel-glow p-card-padding">
             <div className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">{s.label}</div>
-            <div className={`mt-1 font-kpi-value text-kpi-value ${s.tone}`}>{s.value}</div>
+            <div className={`mt-1 font-kpi-value text-kpi-value max-md:text-kpi-value-mobile ${s.tone}`}>{s.value}</div>
           </div>
         ))}
       </div>
@@ -160,7 +205,7 @@ export function WorkOrders() {
               </div>
               <div className="flex-1 space-y-3">
                 {colOrders.length === 0 && (
-                  <p className="py-8 text-center text-caption text-steel-slate">No tickets — drag to rebalance</p>
+                  <p className="py-8 text-center text-caption text-steel-slate">No tickets in this column</p>
                 )}
                 {colOrders.slice(0, 20).map((wo) => (
                   <button
@@ -197,6 +242,9 @@ export function WorkOrders() {
                     )}
                   </button>
                 ))}
+                {colOrders.length > 20 && (
+                  <p className="text-center text-caption text-steel-slate">Showing {Math.min(20, colOrders.length)} of {colOrders.length}</p>
+                )}
               </div>
             </Card>
           );
@@ -212,14 +260,17 @@ export function WorkOrders() {
           <table className="w-full min-w-[560px] text-left text-body-sm">
             <thead>
               <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                <th className="py-2 pr-4 font-medium">ID</th>
-                <th className="py-2 pr-4 font-medium">Asset</th>
-                <th className="py-2 pr-4 font-medium">Issue</th>
-                <th className="py-2 pr-4 font-medium">Confidence</th>
-                <th className="py-2 font-medium">Status</th>
+                <th scope="col" className="py-2 pr-4 font-medium">ID</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Asset</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Issue</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Confidence</th>
+                <th scope="col" className="py-2 font-medium">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline-slate">
+              {aiOrders.length === 0 && (
+                <tr><td colSpan={5} className="py-8 text-center text-caption text-steel-slate">No prediction-backed orders yet.</td></tr>
+              )}
               {aiOrders.slice(0, 12).map((wo) => (
                 <tr key={wo.id} className="text-steel-slate">
                   <td className="py-2.5 pr-4 font-mono text-caption">{wo.id}</td>
@@ -245,7 +296,6 @@ export function WorkOrders() {
             <p className="text-body-md text-ice-white">{selectedLive.title}</p>
             <div className="grid grid-cols-2 gap-3 text-body-sm">
               <div className="rounded-control border border-hairline-slate bg-elevated-slate p-3">
-                <p className="text-caption text-steel-slate">Status</p>
                 <SelectField label="Status" value={selectedLive.status} onChange={(e) => { move(selectedLive, e.target.value); setSelected({ ...selectedLive, status: e.target.value }); }}>
                   {["Open", "In Progress", "Scheduled", "Completed"].map((s) => <option key={s}>{s}</option>)}
                 </SelectField>
@@ -267,28 +317,18 @@ export function WorkOrders() {
             <div>
               <h3 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Timeline</h3>
               <ol className="mt-2 space-y-2 border-l border-hairline-slate pl-4">
-                <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">Created</span> — auto by Maintenance Agent</li>
-                {selectedLive.status === "In Progress" || selectedLive.status === "Completed" ? (
-                  <li className="text-caption text-steel-slate"><span className="font-mono text-ice-white">Started</span> — work began</li>
-                ) : null}
-                {selectedLive.status === "Completed" ? (
-                  <li className="text-caption text-signal-green"><span className="font-mono text-ice-white">Completed</span> — ticket closed</li>
-                ) : null}
+                <li className="text-caption text-steel-slate">
+                  <span className="font-mono text-ice-white">{fmtTimeAgo(selectedLive.created_at)}</span> — Created · {selectedLive.source}
+                </li>
+                <li className="text-caption text-steel-slate">
+                  Current status — <Chip tone={statusToneFor(selectedLive.status)}>{selectedLive.status}</Chip>
+                </li>
               </ol>
             </div>
 
-            <div>
-              <h3 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Notes</h3>
-              <TextField label="Add note" placeholder="Technician note…" value={notes} onChange={(e) => setNotes(e.target.value)} />
-              <p className="mt-3 rounded-control border border-hairline-slate bg-elevated-slate p-3 text-caption text-steel-slate">
-                <span className="font-medium text-violet">Maintenance Agent:</span> recommend replacing bearing during this visit.
-              </p>
-            </div>
-
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => toast(`${selectedLive.id} saved`, "success")}><Icon name="check" size={13} /> Save</Button>
               {selectedLive.status !== "Completed" && (
-                <Button size="sm" variant="secondary" onClick={() => { setCompleteOpen(true); }}><Icon name="check" size={13} /> Complete</Button>
+                <Button size="sm" onClick={() => { setCompleteOpen(true); }}><Icon name="check" size={13} /> Complete</Button>
               )}
               {selectedLive.status === "Completed" && (
                 <Button size="sm" variant="secondary" onClick={() => move(selectedLive, "Open")}>Reopen</Button>
@@ -305,30 +345,31 @@ export function WorkOrders() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setCreateOpen(false); toast("Work order created (demo)", "success"); refresh(); }}>Create</Button>
+            <Button onClick={create} loading={creating}>Create</Button>
           </>
         }
       >
-        <div className="grid grid-cols-1 gap-4">
-          <SelectField label="Asset" defaultValue="">
+        <div key={createOpen ? "open" : "closed"} className="grid grid-cols-1 gap-4">
+          <SelectField label="Asset" value={createAsset} onChange={(e) => setCreateAsset(e.target.value)}>
             <option value="">Select asset</option>
             {assets.map((a) => (
               <option key={a.id} value={a.id}>{a.id} · {a.name}</option>
             ))}
           </SelectField>
-          <TextField label="Issue type" placeholder="Vibration excessive" />
-          <SelectField label="Priority" defaultValue="P2">
+          <TextField label="Issue type" placeholder="Vibration excessive" value={createIssue} onChange={(e) => setCreateIssue(e.target.value)} />
+          <SelectField label="Priority" value={createPriority} onChange={(e) => setCreatePriority(e.target.value)}>
             <option>P1</option>
             <option>P2</option>
             <option>P3</option>
           </SelectField>
-          <SelectField label="Assignee" defaultValue="">
+          <SelectField label="Assignee" value={createAssignee} onChange={(e) => setCreateAssignee(e.target.value)}>
             <option value="">Unassigned</option>
             {technicians.map((t) => (
               <option key={t}>{t}</option>
             ))}
           </SelectField>
-          <TextField label="Due date" type="date" defaultValue={defaultDue} />
+          <TextField label="Due date" type="date" value={createDue} onChange={(e) => setCreateDue(e.target.value)} />
+          {createError && <p role="alert" className="font-caption text-caption text-alert-red">{createError}</p>}
         </div>
       </Modal>
 
