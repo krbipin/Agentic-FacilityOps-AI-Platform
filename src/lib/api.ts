@@ -535,6 +535,10 @@ export function createAsset(body: CreateAssetBody): Promise<AssetItem> {
   return post<AssetItem>("/api/assets", body);
 }
 
+export function createWorkOrder(body: { asset_id: string; title: string; priority: string; source: string; due_date?: string }): Promise<WorkOrderItem> {
+  return post<WorkOrderItem>("/api/work-orders", body);
+}
+
 export function createEnergyReading(body: CreateEnergyReadingBody): Promise<{
   id: number;
   timestamp: string;

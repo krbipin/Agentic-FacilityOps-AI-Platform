@@ -12,7 +12,7 @@ import { TextField, SelectField } from "@/components/ui/Input";
 import { AssetModal } from "@/components/ui/AssetModal";
 import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
-import { fetcher, useApiData, type AssetItem, type AssetDetail, type AssetStatusPayload } from "@/lib/api";
+import { createWorkOrder, fetcher, useApiData, type AssetItem, type AssetDetail, type AssetStatusPayload } from "@/lib/api";
 
 const EMPTY_STATUS: AssetStatusPayload = {
   facility: { name: "", facility_type: "", location: "" },
@@ -24,11 +24,14 @@ const EMPTY_STATUS: AssetStatusPayload = {
 const statusTone: Record<string, Tone> = { Excellent: "green", Good: "blue", Warning: "amber", Critical: "red" };
 const PER_PAGE = 25;
 
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
 export function Assets() {
   const status = useApiData<AssetStatusPayload>("/api/dashboards/assets", EMPTY_STATUS, 30000);
   const typeOptions = ["All", ...status.data.asset_types];
   const { toast } = useToast();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [type, setType] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [page, setPage] = useState(0);
@@ -37,13 +40,19 @@ export function Assets() {
   const [itemsLoading, setItemsLoading] = useState(true);
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [woLoading, setWoLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
 
   useEffect(() => {
     let cancelled = false;
     const run = () => {
       const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
-      if (search.trim()) params.set("search", search.trim());
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (type !== "All") params.set("asset_type", type);
       if (statusFilter !== "All") params.set("status", statusFilter);
       fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
@@ -63,12 +72,12 @@ export function Assets() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [search, type, statusFilter, page]);
+  }, [debouncedSearch, type, statusFilter, page]);
 
   const refreshItems = useCallback(() => {
     setItemsLoading(true);
     const params = new URLSearchParams({ limit: String(PER_PAGE), offset: String(page * PER_PAGE) });
-    if (search.trim()) params.set("search", search.trim());
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     if (type !== "All") params.set("asset_type", type);
     if (statusFilter !== "All") params.set("status", statusFilter);
     fetcher<{ total: number; items: AssetItem[] }>(`/api/assets?${params.toString()}`)
@@ -77,7 +86,7 @@ export function Assets() {
         setTotal(d.total);
       })
       .finally(() => setItemsLoading(false));
-  }, [search, type, statusFilter, page]);
+  }, [debouncedSearch, type, statusFilter, page]);
 
   const openDetail = useCallback((id: string) => {
     setDetailLoading(true);
@@ -86,6 +95,36 @@ export function Assets() {
       .then(setDetail)
       .finally(() => setDetailLoading(false));
   }, []);
+
+  const scheduleWorkOrder = async () => {
+    if (!detail) return;
+    setWoLoading(true);
+    try {
+      const due = detail.days_to_failure != null
+        ? new Date(Date.now() + detail.days_to_failure * 86400000).toISOString().slice(0, 10)
+        : undefined;
+      const wo = await createWorkOrder({
+        asset_id: detail.id,
+        title: `Predictive maintenance — ${detail.name}`,
+        priority: detail.status === "Critical" ? "P1" : "P2",
+        source: "Predictive",
+        due_date: due,
+      });
+      toast(`Work order ${wo.id} created`, "success");
+    } catch {
+      toast("Failed to create work order", "error");
+    } finally {
+      setWoLoading(false);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setDebouncedSearch("");
+    setType("All");
+    setStatusFilter("All");
+    setPage(0);
+  };
 
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
 
@@ -96,6 +135,34 @@ export function Assets() {
     { label: "Critical", value: status.data.statuses.Critical, color: "var(--color-alert-red)" },
   ];
 
+  if (status.loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading assets">
+        <Skeleton className="h-9 w-72" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+        </div>
+        <Skeleton className="h-12" />
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-11" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (status.error) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
+        <Icon name="cpu" className="text-alert-amber" size={32} />
+        <div>
+          <p className="text-body-md font-semibold text-ice-white">Assets unavailable</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{status.error} — check the backend service and try again.</p>
+        </div>
+        <Button variant="secondary" onClick={status.refresh}>Retry</Button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageIntro
@@ -104,7 +171,7 @@ export function Assets() {
         agent="Maintenance Agent"
         actions={
           <>
-            <Button variant="secondary" size="sm" onClick={() => toast("CSV import not configured in demo", "error")}>
+            <Button variant="secondary" size="sm" onClick={() => toast("CSV import not configured in demo", "info")}>
               <Icon name="download" size={14} /> Import CSV
             </Button>
             <Button size="sm" onClick={() => setAddOpen(true)}>
@@ -114,10 +181,10 @@ export function Assets() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-card bg-panel-slate glow-border panel-glow p-card-padding">
           <div className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Total Assets</div>
-          <div className="mt-1 font-kpi-value text-kpi-value text-ice-white">{status.data.total.toLocaleString()}</div>
+          <div className="mt-1 font-kpi-value text-kpi-value max-md:text-kpi-value-mobile text-ice-white">{status.data.total.toLocaleString()}</div>
         </div>
         {distribution.map((d) => (
           <div key={d.label} className="rounded-card bg-panel-slate glow-border panel-glow p-card-padding">
@@ -125,7 +192,7 @@ export function Assets() {
               <span className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">{d.label}</span>
               <span className="size-2.5 rounded-full" style={{ background: d.color }} aria-hidden="true" />
             </div>
-            <div className="mt-1 font-kpi-value text-kpi-value text-ice-white">{status.data.statuses[d.label as keyof typeof status.data.statuses].toLocaleString()}</div>
+            <div className="mt-1 font-kpi-value text-kpi-value max-md:text-kpi-value-mobile text-ice-white">{status.data.statuses[d.label as keyof typeof status.data.statuses].toLocaleString()}</div>
             <div className="mt-1 text-caption text-steel-slate">{status.data.distribution_pct[d.label as keyof typeof status.data.distribution_pct]}% of fleet</div>
           </div>
         ))}
@@ -157,20 +224,29 @@ export function Assets() {
               <table className="w-full min-w-[860px] text-left text-body-sm">
                 <thead>
                   <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                    <th className="py-2 pr-4 font-medium">ID</th>
-                    <th className="py-2 pr-4 font-medium">Name</th>
-                    <th className="py-2 pr-4 font-medium">Type</th>
-                    <th className="py-2 pr-4 font-medium">Location</th>
-                    <th className="py-2 pr-4 font-medium">Status</th>
-                    <th className="py-2 pr-4 font-medium">Health</th>
-                    <th className="py-2 pr-4 font-medium">Last maint.</th>
-                    <th className="py-2 pr-4 font-medium">Next due</th>
-                    <th className="py-2 font-medium">Actions</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">ID</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Name</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Type</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Location</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Status</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Health</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Last maint.</th>
+                    <th scope="col" className="py-2 pr-4 font-medium">Next due</th>
+                    <th scope="col" className="py-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline-slate">
                   {items.length === 0 && (
-                    <tr><td colSpan={9} className="py-10 text-center text-steel-slate">No assets match filters</td></tr>
+                    <tr>
+                      <td colSpan={9} className="py-10">
+                        <div className="flex flex-col items-center gap-2 text-center">
+                          <Icon name="cpu" className="text-steel-slate" size={28} />
+                          <p className="text-body-sm text-ice-white">No assets match filters</p>
+                          <p className="text-caption text-steel-slate">Try adjusting your search or filters.</p>
+                          <Button size="sm" variant="secondary" onClick={clearFilters}>Clear filters</Button>
+                        </div>
+                      </td>
+                    </tr>
                   )}
                   {items.map((a) => (
                     <tr key={a.id} className={`text-steel-slate ${a.status === "Critical" ? "border-l-2 border-alert-red" : a.status === "Warning" ? "border-l-2 border-alert-amber" : ""}`}>
@@ -181,7 +257,14 @@ export function Assets() {
                       <td className="py-3 pr-4"><Chip tone={statusTone[a.status] ?? "steel"}>{a.status}</Chip></td>
                       <td className="py-3 pr-4 font-mono text-caption">{a.health_score}/100</td>
                       <td className="py-3 pr-4 font-mono text-caption">{a.last_maintenance}</td>
-                      <td className="py-3 pr-4 font-mono text-caption">{a.next_due ?? "—"}</td>
+                      <td className="py-3 pr-4 font-mono text-caption">
+                        {a.next_due ? (
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            {a.next_due}
+                            {a.next_due < todayStr() && <Chip tone="amber">Overdue</Chip>}
+                          </span>
+                        ) : "—"}
+                      </td>
                       <td className="py-3">
                         <Button size="sm" variant="ghost" onClick={() => openDetail(a.id)}>View</Button>
                       </td>
@@ -219,7 +302,7 @@ export function Assets() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-body-sm">
+            <div className="grid grid-cols-1 gap-3 text-body-sm sm:grid-cols-2">
               {[
                 ["Manufacturer", detail.manufacturer],
                 ["Installed", detail.install_date],
@@ -255,11 +338,11 @@ export function Assets() {
                   <Icon name="alert" size={14} /> Predicted failure {detail.days_to_failure != null ? `in ~${detail.days_to_failure} days` : "imminent"}
                 </p>
                 <p className="mt-1 font-mono text-caption text-steel-slate">confidence {detail.predicted_risk != null ? `${Math.round(detail.predicted_risk)}%` : "—"} · Maintenance Agent</p>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" onClick={() => toast(`Work order drafted for ${detail.id}`, "success")}>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" loading={woLoading} onClick={scheduleWorkOrder}>
                     <Icon name="clipboard" size={13} /> Schedule work order
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => toast("Prediction dismissed", "success")}>Dismiss</Button>
+                  <Button size="sm" variant="secondary" onClick={() => toast("Prediction dismiss not available — agent-managed", "info")}>Dismiss</Button>
                 </div>
               </div>
             ) : (
