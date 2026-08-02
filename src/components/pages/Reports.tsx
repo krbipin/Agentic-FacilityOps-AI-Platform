@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AreaChart } from "@/components/charts/AreaChart";
 import { Bars } from "@/components/charts/Bars";
 import { PageIntro } from "@/components/PageIntro";
@@ -36,19 +37,39 @@ const EMPTY: ReportsPayload = {
   intelligence: { facility: { name: "", facility_type: "", location: "" }, engine: "", facility_health: 0, agent_health: {}, kpis: { cost_reduction_pct: 0, roi_generated: 0, facility_health: 0, optimizations: 0 }, correlations: [], anomaly_sources: [], anomaly_feed: [], collaboration: [], forecasts: [], recommendations: [], optimizations: 0, roi_multiple: 0, explanation: "" },
 };
 
+const DOMAIN_ROUTES: Record<string, string> = {
+  Energy: "/energy",
+  Maintenance: "/maintenance",
+  Occupancy: "/occupancy",
+  Security: "/security",
+  Cost: "/cost",
+};
+
 export function Reports() {
   const { data, loading, error, refresh } = useApiData<ReportsPayload>("/api/dashboards/reports", EMPTY, 15000);
   const { toast } = useToast();
-  const [period, setPeriod] = useState<"Quarter" | "Year">("Quarter");
+  const router = useRouter();
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
   if (loading) {
     return (
       <div className="space-y-6" aria-busy="true" aria-label="Loading report">
         <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]"><Skeleton className="h-40" /><Skeleton className="h-40" /></div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
+          <Skeleton className="h-40" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
+          </div>
+        </div>
         <Skeleton className="h-56" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-28" />)}</div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
+        </div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
+        </div>
+        <Skeleton className="h-56" />
       </div>
     );
   }
@@ -59,7 +80,7 @@ export function Reports() {
         <Icon name="chart" className="text-violet" size={32} />
         <div>
           <p className="text-body-md font-semibold text-ice-white">Report unavailable</p>
-          <p className="mt-1 text-body-sm text-steel-slate">{error} — is the backend running on :8000?</p>
+          <p className="mt-1 text-body-sm text-steel-slate">{error} — check the backend service and try again.</p>
         </div>
         <Button variant="secondary" onClick={refresh}>Retry</Button>
       </div>
@@ -67,7 +88,11 @@ export function Reports() {
   }
 
   const { kpis, spend_trend, scorecards, sustainability, insights, agent_performance } = data;
-  const periodLabel = period === "Quarter" ? "This quarter" : "This year";
+  const spendAllZero = spend_trend.this_quarter === 0 && spend_trend.budget === 0 && spend_trend.prior_year === 0;
+  const carbon = sustainability.carbon_reduction_pct;
+  const sustainSubtitle = carbon > 0
+    ? `Carbon ↓ ${fmtPct(carbon)} · renewables ${fmtPct(sustainability.renewables_pct)}`
+    : `Carbon ${fmtPct(carbon)} · renewables ${fmtPct(sustainability.renewables_pct)}`;
 
   return (
     <div>
@@ -77,20 +102,7 @@ export function Reports() {
         agent="Facility Intelligence Engine"
         actions={
           <>
-            <div className="flex overflow-hidden rounded-control border border-hairline-slate" role="group" aria-label="Report period">
-              {(["Quarter", "Year"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPeriod(p)}
-                  aria-pressed={period === p}
-                  className={`px-3 py-1.5 text-caption font-medium transition-colors ${period === p ? "bg-primary text-abyss-navy" : "text-steel-slate hover:text-ice-white"}`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => toast("PDF export queued", "success")}>
+            <Button variant="secondary" size="sm" onClick={() => toast("PDF export not available in this demo", "info")}>
               <Icon name="download" size={14} /> Generate PDF
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setScheduleOpen(true)}>
@@ -101,82 +113,119 @@ export function Reports() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
-        <Card>
-          <CardHeader title="Executive Summary" subtitle={periodLabel} />
-          <p className="font-headline-lg text-headline-lg leading-relaxed text-ice-white">{data.narrative}</p>
+        <Card className="p-card-padding">
+          <CardHeader title="Executive Summary" subtitle="This quarter" />
+          {data.narrative ? (
+            <p className="font-headline-lg text-[1.5rem] leading-relaxed text-ice-white">{data.narrative}</p>
+          ) : (
+            <p className="text-body-sm text-steel-slate">No narrative available for this period.</p>
+          )}
           <p className="mt-4 font-mono text-caption text-steel-slate">
             Spend {fmtMoney(spend_trend.this_quarter)} · Budget {fmtMoney(spend_trend.budget)} · Prior year {fmtMoney(spend_trend.prior_year)}
           </p>
         </Card>
 
-        <div className="grid grid-cols-2 gap-4">
-          <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta={`▼ ${fmtPct(kpis.cost_reduction_pct)} QoQ`} deltaTone="green" sub="Operational spend" />
-          <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta={`▲ ${data.cost.roi_multiple.toFixed(1)}x`} deltaTone="green" sub="AI optimization value" />
-          <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" sub="All domains nominal" valueTone="violet" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <KpiCard label="Cost Reduction" value={fmtPct(kpis.cost_reduction_pct)} icon="dollar" delta="vs last month" deltaTone="green" sub="Operational spend" />
+          <KpiCard label="ROI Generated" value={fmtMoney(kpis.roi_generated, true)} icon="trendingUp" delta={`${data.cost.roi_multiple.toFixed(1)}x`} deltaTone="green" sub="AI optimization value" />
+          <KpiCard label="Facility Health" value={`${kpis.facility_health}/100`} icon="cpu" sub="Per-agent health sub-scores" valueTone="violet" />
           <KpiCard label="Optimizations" value={fmtInt(kpis.optimizations)} icon="sparkles" sub="Applied live" />
         </div>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader
-          title={`${period} Spend vs Budget vs Prior Year`}
-          subtitle={`${periodLabel} · operational spend down ${fmtPct(kpis.cost_reduction_pct)}`}
+          title="Spend vs Budget vs Prior Year"
+          subtitle={`This quarter · operational spend down ${fmtPct(kpis.cost_reduction_pct)}`}
         />
-        <div className="pt-2">
-          <Bars
-            height={200}
-            max={Math.max(spend_trend.this_quarter, spend_trend.budget, spend_trend.prior_year) * 1.1}
-            data={[
-              { label: "This Q", value: spend_trend.this_quarter, color: "var(--color-signal-green)", display: fmtMoney(spend_trend.this_quarter, true) },
-              { label: "Budget", value: spend_trend.budget, color: "var(--color-primary)", display: fmtMoney(spend_trend.budget, true) },
-              { label: "Prior yr", value: spend_trend.prior_year, color: "var(--color-steel-slate)", display: fmtMoney(spend_trend.prior_year, true) },
-            ]}
-          />
-          <p className="mt-2 flex items-center gap-1.5 text-caption text-signal-green">
-            <Icon name="trendingDown" size={12} /> {fmtMoney(spend_trend.prior_year - spend_trend.this_quarter, true)} saved vs prior year
-          </p>
-        </div>
+        {spendAllZero ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <Icon name="chart" className="text-steel-slate" size={28} />
+            <p className="text-body-sm text-ice-white">No spend data for this period</p>
+            <p className="text-caption text-steel-slate">Enter energy readings and assets to build the report.</p>
+          </div>
+        ) : (
+          <div className="pt-2">
+            <Bars
+              height={200}
+              max={Math.max(spend_trend.this_quarter, spend_trend.budget, spend_trend.prior_year) * 1.1}
+              data={[
+                { label: "This Q", value: spend_trend.this_quarter, color: "var(--color-signal-green)", display: fmtMoney(spend_trend.this_quarter, true) },
+                { label: "Budget", value: spend_trend.budget, color: "var(--color-primary)", display: fmtMoney(spend_trend.budget, true) },
+                { label: "Prior yr", value: spend_trend.prior_year, color: "var(--color-steel-slate)", display: fmtMoney(spend_trend.prior_year, true) },
+              ]}
+            />
+            <p className="mt-2 flex items-center gap-1.5 text-caption text-signal-green">
+              <Icon name="trendingDown" size={12} /> {fmtMoney(spend_trend.prior_year - spend_trend.this_quarter, true)} saved vs prior year
+            </p>
+          </div>
+        )}
       </Card>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {scorecards.length === 0 && (
+          <div className="col-span-full flex flex-col items-center gap-2 py-8 text-center">
+            <Icon name="cpu" className="text-steel-slate" size={28} />
+            <p className="text-body-sm text-ice-white">No domain scorecards available</p>
+            <p className="text-caption text-steel-slate">Scorecards appear once agents have data to analyze.</p>
+          </div>
+        )}
         {scorecards.map((s) => (
           <Card key={s.domain} className="p-card-padding">
-            <div className="flex items-center justify-between">
-              <span className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">{s.domain}</span>
-              <Chip tone="violet">{s.score}/100</Chip>
-            </div>
-            <div className="mt-2 font-kpi-value text-kpi-value text-ice-white">{s.score}</div>
-            <p className="mt-1 text-caption text-steel-slate">{s.note}</p>
+            <button
+              type="button"
+              onClick={() => router.push(DOMAIN_ROUTES[s.domain] ?? "/")}
+              aria-label={`Open ${s.domain} dashboard`}
+              className="w-full cursor-pointer text-left"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">{s.domain}</span>
+                <Chip tone="violet">{s.score}/100</Chip>
+              </div>
+              <div className="mt-2 font-kpi-value text-kpi-value max-md:text-kpi-value-mobile text-ice-white">{s.score}</div>
+              <p className="mt-1 text-caption text-steel-slate">{s.note}</p>
+            </button>
           </Card>
         ))}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card>
-          <CardHeader
-            title="Sustainability"
-            subtitle={`Carbon ↓ ${fmtPct(sustainability.carbon_reduction_pct)} · renewables ${fmtPct(sustainability.renewables_pct)}`}
-          />
-          <div className="pt-2">
-            <AreaChart
-              data={sustainability.co2_trend.map((p) => ({ label: p.date.slice(5), value: Math.round(p.co2_kg) }))}
-              color="var(--color-signal-green)"
-              fill="var(--color-signal-green)"
-              pointLabel={(p) => `${fmtInt(p.value)} kg`}
-            />
-          </div>
+        <Card className="p-card-padding">
+          <CardHeader title="Sustainability" subtitle={sustainSubtitle} />
+          {sustainability.co2_trend.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <Icon name="chart" className="text-steel-slate" size={28} />
+              <p className="text-body-sm text-ice-white">No CO₂ data for this period</p>
+              <p className="text-caption text-steel-slate">Daily readings will appear here once energy data is recorded.</p>
+            </div>
+          ) : (
+            <div className="pt-2">
+              <AreaChart
+                data={sustainability.co2_trend.map((p) => ({ label: p.date.slice(5), value: Math.round(p.co2_kg) }))}
+                color="var(--color-signal-green)"
+                fill="var(--color-signal-green)"
+                pointLabel={(p) => `${fmtInt(p.value)} kg`}
+              />
+            </div>
+          )}
           <div className="mt-4 flex items-center justify-between rounded-control border border-hairline-slate bg-elevated-slate px-4 py-3">
-            <span className="text-caption text-steel-slate">CO₂-eq trend · last 7 days</span>
-            <span className="font-mono text-body-md text-signal-green">−{fmtPct(sustainability.carbon_reduction_pct)}</span>
+            <span className="text-caption text-steel-slate">CO₂-eq trend · latest 7 daily readings</span>
+            <span className="font-mono text-body-md text-signal-green">{carbon > 0 ? `−${fmtPct(carbon)}` : fmtPct(carbon)}</span>
           </div>
         </Card>
 
-        <Card>
+        <Card className="p-card-padding">
           <CardHeader title="Executive Intelligence" subtitle="Plain-language insights" />
           <ul role="list" className="space-y-3">
+            {insights.length === 0 && (
+              <li className="flex flex-col items-center gap-2 py-8 text-center">
+                <Icon name="sparkles" className="text-steel-slate" size={24} />
+                <p className="text-caption text-steel-slate">No insights available this period.</p>
+              </li>
+            )}
             {insights.map((ins) => (
               <li key={ins} className="flex items-start gap-3 rounded-control border border-hairline-slate bg-elevated-slate p-4">
-                <span className="mt-0.5 text-violet"><Icon name="sparkles" size={16} /></span>
+                <span className="mt-0.5 shrink-0 text-violet"><Icon name="sparkles" size={16} /></span>
                 <p className="text-body-sm text-ice-white">{ins}</p>
               </li>
             ))}
@@ -184,20 +233,25 @@ export function Reports() {
         </Card>
       </div>
 
-      <Card className="mt-6">
+      <Card className="mt-6 p-card-padding">
         <CardHeader title="Agent Performance" subtitle="Health scores across all agents" />
         <div className="-mx-4 overflow-x-auto px-4">
           <table className="w-full min-w-[640px] text-left text-body-sm">
             <thead>
               <tr className="text-caption uppercase tracking-wide text-steel-slate">
-                <th className="py-2 pr-4 font-medium">Agent</th>
-                <th className="py-2 pr-4 font-medium">Health</th>
-                <th className="py-2 pr-4 font-medium">Cost reduction</th>
-                <th className="py-2 pr-4 font-medium">ROI</th>
-                <th className="py-2 font-medium">Downtime</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Agent</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Health</th>
+                <th scope="col" className="py-2 pr-4 font-medium">Cost reduction</th>
+                <th scope="col" className="py-2 pr-4 font-medium">ROI</th>
+                <th scope="col" className="py-2 font-medium">Downtime</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline-slate">
+              {agent_performance.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-caption text-steel-slate">No agent data available.</td>
+                </tr>
+              )}
               {agent_performance.map((a) => (
                 <tr key={a.agent} className="text-steel-slate">
                   <td className="py-3 pr-4 text-ice-white">{a.agent}</td>
@@ -223,7 +277,7 @@ export function Reports() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setScheduleOpen(false)}>Cancel</Button>
-            <Button onClick={() => { setScheduleOpen(false); toast("Delivery scheduled — weekly to alex.morgan@facilityops.ai", "success"); }}>
+            <Button onClick={() => { setScheduleOpen(false); toast("Delivery scheduling not connected in this demo", "info"); }}>
               Schedule
             </Button>
           </>

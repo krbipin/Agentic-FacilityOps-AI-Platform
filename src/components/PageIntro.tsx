@@ -23,7 +23,7 @@ export function PageIntro({ title, subtitle, agent, live = true, actions }: Page
           )}
         </p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         {live && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-hairline-slate bg-elevated-slate px-2.5 py-1 text-caption font-semibold uppercase tracking-wider text-signal-green">
             <span className="relative flex h-2 w-2">
