@@ -412,7 +412,7 @@ export interface SettingsIntegrationsPayload {
 export interface CopilotAgentsPayload {
   agents: { name: string; status: string; insight: string }[];
   facility_health: number;
-  correlations: { pair: string; r: number; computed_r: number }[];
+  correlations: IntelligenceCorrelation[];
 }
 
 export function useApiData<T>(path: string | null, fallback: T, intervalMs?: number) {

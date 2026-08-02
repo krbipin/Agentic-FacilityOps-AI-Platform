@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Icon, type IconName } from "@/components/ui/icons";
+import { Skeleton } from "@/components/ui/misc";
 import { useToast } from "@/components/ui/Toast";
 import { fetcher, type CopilotAgentsPayload } from "@/lib/api";
 
@@ -64,6 +65,8 @@ export function Copilot() {
   const [sending, setSending] = useState(false);
   const [activity, setActivity] = useState<string[]>([]);
   const [data, setData] = useState<CopilotAgentsPayload>(EMPTY);
+  const [railLoading, setRailLoading] = useState(true);
+  const [railError, setRailError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -72,9 +75,16 @@ export function Copilot() {
     const run = () => {
       fetcher<CopilotAgentsPayload>("/api/copilot/agents")
         .then((d) => {
-          if (!cancelled) setData(d);
+          if (cancelled) return;
+          setData(d);
+          setRailError(null);
         })
-        .catch(() => {});
+        .catch((e) => {
+          if (!cancelled) setRailError(e instanceof Error ? e.message : "Request failed");
+        })
+        .finally(() => {
+          if (!cancelled) setRailLoading(false);
+        });
     };
     run();
     const id = window.setInterval(run, 30000);
@@ -89,13 +99,20 @@ export function Copilot() {
   }, [messages, activity]);
 
   const postChat = useCallback(async (message: string): Promise<ChatResponse> => {
-    const res = await fetch("/api/copilot/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
-    });
-    if (!res.ok) throw new Error(String(res.status));
-    return res.json();
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 60000);
+    try {
+      const res = await fetch("/api/copilot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json();
+    } finally {
+      window.clearTimeout(timer);
+    }
   }, []);
 
   const send = useCallback(async (text: string) => {
@@ -105,7 +122,6 @@ export function Copilot() {
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setSending(true);
-    setActivity(["Facility Intelligence Engine → dispatching query across agent mesh"]);
     try {
       const body = await postChat(q);
       setActivity(body.reasoning.map((r) => `${r.agent} → ${r.step}`));
@@ -120,9 +136,10 @@ export function Copilot() {
           collaborated: body.agents_collaborated,
         },
       ]);
-    } catch {
-      toast("Agents offline — reply limited to cached data", "error");
-      setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: "Agents offline — replies limited to local cache.", agents: [], reasoning: [], collaborated: 0 }]);
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === "AbortError";
+      toast(timedOut ? "Copilot timed out — cold agent startup can take ~30s. Try again." : "Agents offline — couldn't reach the backend", "error");
+      setMessages((m) => [...m, { id: nextId.current++, role: "copilot", text: timedOut ? "I timed out waiting for the agents — they can take ~30s to spin up cold. Try again in a moment." : "Agents offline — I couldn't reach the backend. Try again in a moment.", agents: [], reasoning: [], collaborated: 0 }]);
     } finally {
       setSending(false);
       setActivity([]);
@@ -143,7 +160,7 @@ export function Copilot() {
       />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_280px]">
-        <Card className="flex h-[calc(100dvh-14rem)] flex-col">
+        <Card className="flex h-[60dvh] flex-col xl:h-[calc(100dvh-14rem)]">
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {messages.length === 0 && (
               <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
@@ -196,10 +213,10 @@ export function Copilot() {
                           </ul>
                         </details>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Button size="sm" variant="secondary" onClick={() => toast("Work order drafted", "success")}>
+                          <Button size="sm" variant="secondary" onClick={() => toast("Create work order from chat isn't wired — use the Work Orders page", "info")}>
                             <Icon name="clipboard" size={12} /> Create work order
                           </Button>
-                          <Button size="sm" variant="secondary" onClick={() => toast("Recommendation applied", "success")}>
+                          <Button size="sm" variant="secondary" onClick={() => toast("Apply recommendation not available in this demo", "info")}>
                             <Icon name="sparkles" size={12} /> Apply recommendation
                           </Button>
                         </div>
@@ -243,56 +260,80 @@ export function Copilot() {
                 <Icon name="send" size={16} />
               </Button>
             </form>
-            <p className="mt-2 text-caption text-steel-slate">Answers cite live data · Agents act only on your approval</p>
+            <p className="mt-2 text-caption text-steel-slate">Answers cite live data</p>
           </div>
         </Card>
 
-        <Card className="flex h-[calc(100dvh-14rem)] flex-col">
+        <Card className="flex flex-col xl:h-[calc(100dvh-14rem)]">
           <h3 className="px-5 pb-2 pt-4 font-section-header text-section-header uppercase tracking-wider text-steel-slate">Agent activity</h3>
           <div className="flex-1 overflow-y-auto px-5 pb-4">
-            {activity.map((line, i) => (
-              <p key={i} className="flex items-start gap-2 py-1.5 text-caption text-steel-slate">
-                <span className={line.endsWith("✓") ? "text-signal-green" : line.toLowerCase().includes("dispatching") ? "text-violet" : "text-steel-slate"}>
-                  <Icon name={line.endsWith("✓") ? "check" : "cpu"} size={12} />
-                </span>
-                {line}
-              </p>
-            ))}
-            {activity.length === 0 && <p className="pt-2 text-caption text-steel-slate/70">Idle — send a message to dispatch agents</p>}
+            {railLoading ? (
+              <div className="space-y-2 py-1">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+              </div>
+            ) : railError ? (
+              <p className="pt-2 text-caption text-steel-slate">Agents unreachable — check the backend service.</p>
+            ) : activity.length === 0 ? (
+              <p className="pt-2 text-caption text-steel-slate/70">Idle — send a message to dispatch agents</p>
+            ) : (
+              activity.map((line, i) => (
+                <p key={i} className="flex items-start gap-2 py-1.5 text-caption text-steel-slate">
+                  <span className={line.toLowerCase().includes("dispatching") ? "text-violet" : "text-steel-slate"}>
+                    <Icon name="cpu" size={12} />
+                  </span>
+                  {line}
+                </p>
+              ))
+            )}
           </div>
           <div className="border-t border-hairline-slate px-5 py-4">
             <h4 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Standing by</h4>
-            <ul role="list" className="mt-2 space-y-2">
-              {data.agents.map((a) => (
-                <li key={a.name} className="flex items-center gap-2">
-                  <span className="rounded-md bg-panel-slate p-1.5" style={{ color: agentColor[a.name] ?? "var(--color-steel-slate)" }}>
-                    <Icon name={agentIcon[a.name] ?? "cpu"} size={14} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-caption text-ice-white">{a.name}</p>
-                    <p className="truncate text-caption text-steel-slate/70">{a.insight}</p>
-                  </div>
-                  <span className={`size-2 rounded-full ${a.status === "coordinating" ? "bg-violet" : "bg-signal-green"}`} aria-hidden="true" />
-                </li>
-              ))}
-              {data.agents.length === 0 && <li className="text-caption text-steel-slate/70">No agents reporting — is the backend running?</li>}
-            </ul>
+            {railLoading ? (
+              <div className="mt-2 space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+              </div>
+            ) : railError ? (
+              <p className="mt-2 text-caption text-steel-slate">Agents unreachable — check the backend service.</p>
+            ) : (
+              <ul role="list" className="mt-2 space-y-2">
+                {data.agents.map((a) => (
+                  <li key={a.name} className="flex items-center gap-2">
+                    <span className="rounded-md bg-panel-slate p-1.5" style={{ color: agentColor[a.name] ?? "var(--color-steel-slate)" }}>
+                      <Icon name={agentIcon[a.name] ?? "cpu"} size={14} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-caption text-ice-white">{a.name}</p>
+                      <p className="truncate text-caption text-steel-slate/70">{a.insight}</p>
+                    </div>
+                    <span className={`size-2 rounded-full ${a.status === "coordinating" ? "bg-violet" : "bg-signal-green"}`} aria-hidden="true" />
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="border-t border-hairline-slate px-5 py-4">
             <div className="flex items-center justify-between">
               <h4 className="font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Facility health</h4>
-              <Chip tone="violet">{data.facility_health}/100</Chip>
+              {!railLoading && !railError && <Chip tone="violet">{data.facility_health}/100</Chip>}
             </div>
             <h4 className="mt-3 font-label-caps text-label-caps text-steel-slate uppercase tracking-wide">Correlations</h4>
-            <ul role="list" className="mt-2 space-y-1.5">
-              {data.correlations.map((c) => (
-                <li key={c.pair} className="flex items-center justify-between text-caption text-steel-slate">
-                  <span>{c.pair}</span>
-                  <span className="font-mono text-violet">r = {c.r.toFixed(2)}</span>
-                </li>
-              ))}
-              {data.correlations.length === 0 && <li className="text-caption text-steel-slate/70">No correlations computed yet</li>}
-            </ul>
+            {railLoading ? (
+              <div className="mt-2 space-y-2">
+                {Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+              </div>
+            ) : railError ? (
+              <p className="mt-2 text-caption text-steel-slate">Correlations unavailable.</p>
+            ) : (
+              <ul role="list" className="mt-2 space-y-1.5">
+                {data.correlations.map((c) => (
+                  <li key={c.pair} className="flex items-center justify-between gap-3 text-caption text-steel-slate">
+                    <span className="min-w-0 truncate">{c.pair}</span>
+                    <span className="shrink-0 font-mono text-violet">{c.r != null ? `r = ${c.r.toFixed(2)}` : (c.confidence ?? "—")}</span>
+                  </li>
+                ))}
+                {data.correlations.length === 0 && <li className="text-caption text-steel-slate/70">No correlations computed yet</li>}
+              </ul>
+            )}
           </div>
         </Card>
       </div>
