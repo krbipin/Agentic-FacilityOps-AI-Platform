@@ -103,9 +103,3 @@ only ever live in gitignored env files / platform dashboards.
 Next.js 16.2.12 · React 19.2.4 · TypeScript 5 · Tailwind CSS v4 · Clerk · FastAPI ·
 Python ≥3.14 · pandas 3 · NumPy 2 · scikit-learn · SQLAlchemy 2 · psycopg3 · PostgreSQL
 (Neon) · uv · Render · Vercel. See [TECH STACK.md](docs/TECH STACK.md).
-
-## Status
-
-- **Done:** full-stack live app (Next.js + FastAPI + Neon), 8 modules, 14 pages, Clerk auth,
-  live simulation & polling, backend-driven KPIs, production deployments on Render + Vercel.
-- **Planned:** email/SMS/Teams alert delivery, multi-facility support, mobile app.
